@@ -1,14 +1,9 @@
 from burp import IBurpExtender, ITab, IHttpListener, IMessageEditorController
-from java.awt import Component;
-from java.io import PrintWriter;
-from java.util import ArrayList;
-from java.util import List;
-from javax.swing import JScrollPane;
-from javax.swing import JSplitPane;
-from javax.swing import JTabbedPane;
-from javax.swing import JTable;
-from javax.swing import SwingUtilities;
-from javax.swing.table import AbstractTableModel;
+from java.awt import Component
+from java.io import PrintWriter
+from java.util import ArrayList, List
+from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, SwingUtilities, JPanel, JButton
+from javax.swing.table import AbstractTableModel
 from threading import Lock
 
 class BurpExtender(IBurpExtender, IHttpListener):
@@ -122,7 +117,8 @@ class UiTopPane(JTabbedPane):
         self.logTable = UiLogTable(callbacks, bottom_pane)
         scrollPane = JScrollPane(self.logTable)
         self.addTab("Log", scrollPane)
-        #self.addTab("Options", self._responseViewer.getComponent())
+        options = OptionsPanel()
+        self.addTab("Options", options)
         callbacks.customizeUiComponent(self)
 
 from collections import namedtuple
@@ -196,3 +192,9 @@ class UiLogTable(JTable):
             if columnIndex == 1:
                 return logEntry.url.toString()
             return ""
+
+class OptionsPanel(JPanel):
+    def __init__(self):
+        reloadButton = JButton("Reload UI from git repo")
+        # see JButton::addActionListener
+        self.add(reloadButton)
