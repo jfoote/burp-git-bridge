@@ -53,13 +53,13 @@ class BurpUi(ITab):
 
     def __init__(self, callbacks):
 
-        # Create split pane with upper and lower panes
+        # Create split pane with top and bottom panes
 
         self._splitpane = JSplitPane(JSplitPane.VERTICAL_SPLIT)
-        self.lower_pane = UiLowerPane(callbacks)
-        self.top_pane = UiTopPane(callbacks, self.lower_pane)
+        self.bottom_pane = UiBottomPane(callbacks)
+        self.top_pane = UiTopPane(callbacks, self.bottom_pane)
         self._splitpane.setLeftComponent(self.top_pane)
-        self._splitpane.setRightComponent(self.lower_pane)
+        self._splitpane.setRightComponent(self.bottom_pane)
 
         
         # Add the plugin's custom tab to Burp's UI
@@ -78,9 +78,9 @@ class BurpUi(ITab):
         self.top_pane.logTable.add_network_entry(toolFlag, messageInfo)
 
 
-class UiLowerPane(JTabbedPane, IMessageEditorController):
+class UiBottomPane(JTabbedPane, IMessageEditorController):
     '''
-    The lower pane in the this extension's UI tab. It shows detail of 
+    The bottom pane in the this extension's UI tab. It shows detail of 
     whatever is selected in the top pane.
     '''
     def __init__(self, callbacks):
@@ -92,7 +92,7 @@ class UiLowerPane(JTabbedPane, IMessageEditorController):
 
     def show_log_entry(self, log_entry):
         '''
-        Shows the log entry in the lower pane of the UI
+        Shows the log entry in the bottom pane of the UI
         '''
         self._requestViewer.setMessage(log_entry.requestResponse.getRequest(), True)
         self._responseViewer.setMessage(log_entry.requestResponse.getResponse(), False)
@@ -118,8 +118,8 @@ class UiTopPane(JTabbedPane):
     The top pane in this extension's UI tab. It shows either the in-burp 
     version of the Log or an "Options" tab (name TBD).
     '''
-    def __init__(self, callbacks, lower_pane):
-        self.logTable = UiLogTable(callbacks, lower_pane)
+    def __init__(self, callbacks, bottom_pane):
+        self.logTable = UiLogTable(callbacks, bottom_pane)
         scrollPane = JScrollPane(self.logTable)
         self.addTab("Log", scrollPane)
         #self.addTab("Options", self._responseViewer.getComponent())
@@ -135,8 +135,8 @@ class UiLogTable(JTable):
     Note, as a JTable, this stays synchronized with the underlying
     ArrayList. 
     '''
-    def __init__(self, callbacks, lower_pane):
-        self.lower_pane = lower_pane
+    def __init__(self, callbacks, bottom_pane):
+        self.bottom_pane = bottom_pane
         self._callbacks = callbacks
         self._log = ArrayList()
         self._lock = Lock()
@@ -152,7 +152,7 @@ class UiLogTable(JTable):
     
         logEntry = self._log.get(row)
         JTable.changeSelection(self, row, col, toggle, extend)
-        self.lower_pane.show_log_entry(logEntry)
+        self.bottom_pane.show_log_entry(logEntry)
 
     def add_network_entry(self, toolFlag, messageInfo):
         # create a new log entry with the message details
