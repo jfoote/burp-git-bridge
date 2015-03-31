@@ -1,10 +1,16 @@
-from burp import IBurpExtender, ITab, IHttpListener, IMessageEditorController
+from burp import IBurpExtender, ITab, IHttpListener, IMessageEditorController, IContextMenuFactory
 from java.awt import Component
+from java.awt.event import ActionListener
 from java.io import PrintWriter
 from java.util import ArrayList, List
-from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, SwingUtilities, JPanel, JButton
+from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, SwingUtilities, JPanel, JButton, JLabel, JMenuItem
 from javax.swing.table import AbstractTableModel
 from threading import Lock
+
+
+'''
+Entry point for Burp and Rally extension.
+'''
 
 class BurpExtender(IBurpExtender, IHttpListener):
     '''
@@ -18,8 +24,9 @@ class BurpExtender(IBurpExtender, IHttpListener):
         self._helpers = callbacks.getHelpers()
         callbacks.setExtensionName("Burp and Rally")
         
-        self.ui = BurpUi(callbacks)
-        self.log = Log(self.ui)
+        self.log = Log()
+        self.ui = BurpUi(callbacks, self.log)
+        self.log.ui = self.ui
        
         callbacks.registerHttpListener(self)
 
@@ -27,26 +34,35 @@ class BurpExtender(IBurpExtender, IHttpListener):
         if not messageIsRequest:
             self.log.add_network_entry(toolFlag, messageInfo)
        
+
+'''
+Logging functionality.
+'''
+
 class Log(object):
     '''
     Log of burp activity: commands handles both the Burp UI log and the git 
     repo log.
     Used by BurpExtender (for now) when it logs input events.
     '''
-    def __init__(self, ui):
-        self.ui = ui
+    def __init__(self):
+        self.ui = None
 
     def add_network_entry(self, toolFlag, messageInfo):
         self.ui.add_network_log_entry(toolFlag, messageInfo)
         # TODO: git stuff
  
+
+'''
+Implementation of extension's UI.
+'''
 class BurpUi(ITab):
     '''
     The collection of objects that make up this extension's Burp UI. Created
     by BurpExtender.
     '''
 
-    def __init__(self, callbacks):
+    def __init__(self, callbacks, log):
 
         # Create split pane with top and bottom panes
 
@@ -55,6 +71,13 @@ class BurpUi(ITab):
         self.top_pane = UiTopPane(callbacks, self.bottom_pane)
         self._splitpane.setLeftComponent(self.top_pane)
         self._splitpane.setRightComponent(self.bottom_pane)
+
+
+        # Create right-click handler
+
+        self.log = log
+        rc_handler = RightClickHandler(callbacks, log)
+        callbacks.registerContextMenuFactory(rc_handler)
 
         
         # Add the plugin's custom tab to Burp's UI
@@ -72,6 +95,38 @@ class BurpUi(ITab):
     def add_network_log_entry(self, toolFlag, messageInfo):
         self.top_pane.logTable.add_network_entry(toolFlag, messageInfo)
 
+class RightClickHandler(IContextMenuFactory):
+    def __init__(self, callbacks, log):
+        self.callbacks = callbacks
+        self.log = log
+
+    def createMenuItems(self, invocation):
+        import sys
+        sys.stdout.write("invoked\n")
+        context = invocation.getInvocationContext()
+        tool = invocation.getToolFlag()
+        if tool == self.callbacks.TOOL_REPEATER:
+            if context in [invocation.CONTEXT_MESSAGE_EDITOR_REQUEST, invocation.CONTEXT_MESSAGE_VIEWER_RESPONSE]:
+                item = JMenuItem("Send to Rally")
+                item.addActionListener(self.RepeaterHandler(self.callbacks, invocation, self.log))
+                items = ArrayList()
+                items.add(item)
+                return items
+        else:
+            # TODO: add support for other tools
+            pass
+
+    class RepeaterHandler(ActionListener):
+        def __init__(self, callbacks, invocation, log):
+            self.callbacks = callbacks
+            self.invocation = invocation
+            self.log = log
+
+        def actionPerformed(self, actionEvent):
+            import sys
+            sys.stdout.write("actionPerformed\n")
+            for message in self.invocation.getSelectedMessages():
+                self.log.add_network_entry(self.callbacks.TOOL_REPEATER, message) 
 
 class UiBottomPane(JTabbedPane, IMessageEditorController):
     '''
@@ -79,10 +134,12 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
     whatever is selected in the top pane.
     '''
     def __init__(self, callbacks):
+        self.sendPanel = SendPanel()
         self._requestViewer = callbacks.createMessageEditor(self, False)
         self._responseViewer = callbacks.createMessageEditor(self, False)
         self.addTab("Request", self._requestViewer.getComponent())
         self.addTab("Response", self._responseViewer.getComponent())
+        self.addTab("Send to Tools", self.sendPanel)
         callbacks.customizeUiComponent(self)
 
     def show_log_entry(self, log_entry):
@@ -99,10 +156,10 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
     and responses are shown in the UI pane
     '''
     def getHttpService(self):
-        return self._currentlyDisplayedItem.getHttpService()
+        return self._currentlyDisplayedItem.requestResponse.getHttpService()
 
     def getRequest(self):
-        return self._currentlyDisplayedItem.getRequest()
+        return self._currentlyDisplayedItem.requestResponse.getRequest()
 
     def getResponse(self):
         return self._currentlyDisplayedItem.getResponse()
@@ -118,7 +175,7 @@ class UiTopPane(JTabbedPane):
         scrollPane = JScrollPane(self.logTable)
         self.addTab("Log", scrollPane)
         options = OptionsPanel()
-        self.addTab("Options", options)
+        self.addTab("Configuration", options)
         callbacks.customizeUiComponent(self)
 
 from collections import namedtuple
@@ -164,6 +221,7 @@ class UiLogTable(JTable):
         This is the model for that table that is show in the UI tab. This is 
         a nested class (for now) as the TableModel and JTable classes have 
         common ancestors.
+        TODO: Maybe move this to Log (directly, as nested class, or something) 
         '''
         def __init__(self, callbacks, log):
             self._log = log
@@ -198,3 +256,11 @@ class OptionsPanel(JPanel):
         reloadButton = JButton("Reload UI from git repo")
         # see JButton::addActionListener
         self.add(reloadButton)
+
+class SendPanel(JPanel):
+    def __init__(self):
+        label = JLabel("Send selected results to respective burp tools:")
+        sendButton = JButton("Send")
+        self.add(label)
+        # see JButton::addActionListener
+        self.add(sendButton)
