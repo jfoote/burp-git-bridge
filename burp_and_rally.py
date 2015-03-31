@@ -6,6 +6,7 @@ from java.util import ArrayList, List
 from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, SwingUtilities, JPanel, JButton, JLabel, JMenuItem
 from javax.swing.table import AbstractTableModel
 from threading import Lock
+import datetime
 
 
 '''
@@ -39,6 +40,8 @@ class BurpExtender(IBurpExtender, IHttpListener):
 Logging functionality.
 '''
 
+from collections import namedtuple
+LogEntry = namedtuple('LogEntry', ['tool', 'requestResponse', 'url', 'timestamp'])
 class Log(AbstractTableModel):
     '''
     Log of burp activity: commands handles both the Burp UI log and the git 
@@ -53,18 +56,21 @@ class Log(AbstractTableModel):
         self._lock = Lock()
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
+        self._git_log = GitLog(callbacks)
 
     def add_network_entry(self, toolFlag, messageInfo):
 
-        # Add to this (the in-Burp model of the log)
+        # Add to self (the in-Burp model of the log), then add to git repo
 
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self._lock.acquire()
         row = self._log.size()
-        self._log.add(LogEntry(toolFlag, self._callbacks.saveBuffersToTempFiles(messageInfo), self._helpers.analyzeRequest(messageInfo).getUrl()))
+        entry = LogEntry(toolFlag, self._callbacks.saveBuffersToTempFiles(messageInfo), self._helpers.analyzeRequest(messageInfo).getUrl(), timestamp)
+        self._log.add(entry)
         self.fireTableRowsInserted(row, row)
         self._lock.release()
 
-        # TODO: Add to git repo
+        self._git_log.add_entry(entry)
 
     def getRowCount(self):
         try:
@@ -73,12 +79,14 @@ class Log(AbstractTableModel):
             return 0
     
     def getColumnCount(self):
-        return 2
+        return 3
     
     def getColumnName(self, columnIndex):
         if columnIndex == 0:
+            return "Time added"
+        elif columnIndex == 1:
             return "Tool"
-        if columnIndex == 1:
+        elif columnIndex == 2:
             return "URL"
         return ""
 
@@ -88,11 +96,42 @@ class Log(AbstractTableModel):
     def getValueAt(self, rowIndex, columnIndex):
         logEntry = self._log.get(rowIndex)
         if columnIndex == 0:
+            return logEntry.timestamp
+        elif columnIndex == 1:
             return self._callbacks.getToolName(logEntry.tool)
-        if columnIndex == 1:
+        elif columnIndex == 2:
             return logEntry.url.toString()
+
         return ""
 
+import os, subprocess
+class GitLog(object):
+    def __init__(self, burp_callbacks):
+
+        self.burp_callbacks = burp_callbacks
+
+        # Set directory paths and if necessary, init git repo
+
+        home = os.path.expanduser("~")
+        self.repo_path = os.path.join(home, ".burp-and-rally")
+
+        self.req_dir = os.path.join(self.repo_path, "requested")
+        self.req_path = os.path.join(self.req_dir, "request")
+        self.req_ts_path = os.path.join(self.req_dir, "timestamp")
+
+        self.resp_dir = os.path.join(self.repo_path, "responded")
+        self.resp_req_path = os.path.join(self.resp_dir, "request")
+        self.resp_resp_path = os.path.join(self.resp_dir, "response")
+        self.resp_ts_path = os.path.join(self.resp_dir, "timestamp")
+
+        if not os.path.exists(self.repo_path):
+            subprocess.check_call(["git", "init", self.repo_path], cwd=home)
+            os.mkdir(self.req_dir)
+            os.mkdir(self.resp_dir)
+
+    def add_entry(self, entry):
+        pass
+ 
 
 '''
 Implementation of extension's UI.
@@ -216,8 +255,6 @@ class UiTopPane(JTabbedPane):
         self.addTab("Configuration", options)
         callbacks.customizeUiComponent(self)
 
-from collections import namedtuple
-LogEntry = namedtuple('LogEntry', ['tool', 'requestResponse', 'url'])
 class UiLogTable(JTable):
     '''
     Table of log entries that are shown in the top pane of the UI when
