@@ -24,7 +24,7 @@ class BurpExtender(IBurpExtender, IHttpListener):
         self._helpers = callbacks.getHelpers()
         callbacks.setExtensionName("Burp and Rally")
         
-        self.log = Log()
+        self.log = Log(callbacks)
         self.ui = BurpUi(callbacks, self.log)
         self.log.ui = self.ui
        
@@ -39,19 +39,60 @@ class BurpExtender(IBurpExtender, IHttpListener):
 Logging functionality.
 '''
 
-class Log(object):
+class Log(AbstractTableModel):
     '''
     Log of burp activity: commands handles both the Burp UI log and the git 
     repo log.
+    Acts as a AbstractTableModel for that table that is show in the UI tab. 
     Used by BurpExtender (for now) when it logs input events.
     '''
-    def __init__(self):
+
+    def __init__(self, callbacks):
         self.ui = None
+        self._log = ArrayList()
+        self._lock = Lock()
+        self._callbacks = callbacks
+        self._helpers = callbacks.getHelpers()
 
     def add_network_entry(self, toolFlag, messageInfo):
-        self.ui.add_network_log_entry(toolFlag, messageInfo)
-        # TODO: git stuff
- 
+
+        # Add to this (the in-Burp model of the log)
+
+        self._lock.acquire()
+        row = self._log.size()
+        self._log.add(LogEntry(toolFlag, self._callbacks.saveBuffersToTempFiles(messageInfo), self._helpers.analyzeRequest(messageInfo).getUrl()))
+        self.fireTableRowsInserted(row, row)
+        self._lock.release()
+
+        # TODO: Add to git repo
+
+    def getRowCount(self):
+        try:
+            return self._log.size()
+        except:
+            return 0
+    
+    def getColumnCount(self):
+        return 2
+    
+    def getColumnName(self, columnIndex):
+        if columnIndex == 0:
+            return "Tool"
+        if columnIndex == 1:
+            return "URL"
+        return ""
+
+    def get(self, rowIndex):
+        return self._log.get(rowIndex)
+    
+    def getValueAt(self, rowIndex, columnIndex):
+        logEntry = self._log.get(rowIndex)
+        if columnIndex == 0:
+            return self._callbacks.getToolName(logEntry.tool)
+        if columnIndex == 1:
+            return logEntry.url.toString()
+        return ""
+
 
 '''
 Implementation of extension's UI.
@@ -68,7 +109,7 @@ class BurpUi(ITab):
 
         self._splitpane = JSplitPane(JSplitPane.VERTICAL_SPLIT)
         self.bottom_pane = UiBottomPane(callbacks)
-        self.top_pane = UiTopPane(callbacks, self.bottom_pane)
+        self.top_pane = UiTopPane(callbacks, self.bottom_pane, log)
         self._splitpane.setLeftComponent(self.top_pane)
         self._splitpane.setRightComponent(self.bottom_pane)
 
@@ -91,9 +132,6 @@ class BurpUi(ITab):
        
     def getUiComponent(self):
         return self._splitpane
-
-    def add_network_log_entry(self, toolFlag, messageInfo):
-        self.top_pane.logTable.add_network_entry(toolFlag, messageInfo)
 
 class RightClickHandler(IContextMenuFactory):
     def __init__(self, callbacks, log):
@@ -170,8 +208,8 @@ class UiTopPane(JTabbedPane):
     The top pane in this extension's UI tab. It shows either the in-burp 
     version of the Log or an "Options" tab (name TBD).
     '''
-    def __init__(self, callbacks, bottom_pane):
-        self.logTable = UiLogTable(callbacks, bottom_pane)
+    def __init__(self, callbacks, bottom_pane, log_model):
+        self.logTable = UiLogTable(callbacks, bottom_pane, log_model)
         scrollPane = JScrollPane(self.logTable)
         self.addTab("Log", scrollPane)
         options = OptionsPanel()
@@ -188,14 +226,11 @@ class UiLogTable(JTable):
     Note, as a JTable, this stays synchronized with the underlying
     ArrayList. 
     '''
-    def __init__(self, callbacks, bottom_pane):
+    def __init__(self, callbacks, bottom_pane, log):
         self.bottom_pane = bottom_pane
         self._callbacks = callbacks
-        self._log = ArrayList()
-        self._lock = Lock()
-        self._helpers = callbacks.getHelpers()
-        self._model = self.TableModel(callbacks, self._log)
-        self.setModel(self._model)
+        self.log = log
+        self.setModel(log)
         callbacks.customizeUiComponent(self)
     
     def changeSelection(self, row, col, toggle, extend):
@@ -203,53 +238,8 @@ class UiLogTable(JTable):
         Displays the selected item in the content pane
         '''
     
-        logEntry = self._log.get(row)
         JTable.changeSelection(self, row, col, toggle, extend)
-        self.bottom_pane.show_log_entry(logEntry)
-
-    def add_network_entry(self, toolFlag, messageInfo):
-        # create a new log entry with the message details
-        self._lock.acquire()
-        row = self._log.size()
-        self._log.add(LogEntry(toolFlag, self._callbacks.saveBuffersToTempFiles(messageInfo), self._helpers.analyzeRequest(messageInfo).getUrl()))
-        self._model.fireTableRowsInserted(row, row)
-        self._lock.release()
-
-
-    class TableModel(AbstractTableModel):
-        '''
-        This is the model for that table that is show in the UI tab. This is 
-        a nested class (for now) as the TableModel and JTable classes have 
-        common ancestors.
-        TODO: Maybe move this to Log (directly, as nested class, or something) 
-        '''
-        def __init__(self, callbacks, log):
-            self._log = log
-            self._callbacks = callbacks
-
-        def getRowCount(self):
-            try:
-                return self._log.size()
-            except:
-                return 0
-    
-        def getColumnCount(self):
-            return 2
-    
-        def getColumnName(self, columnIndex):
-            if columnIndex == 0:
-                return "Tool"
-            if columnIndex == 1:
-                return "URL"
-            return ""
-    
-        def getValueAt(self, rowIndex, columnIndex):
-            logEntry = self._log.get(rowIndex)
-            if columnIndex == 0:
-                return self._callbacks.getToolName(logEntry.tool)
-            if columnIndex == 1:
-                return logEntry.url.toString()
-            return ""
+        self.bottom_pane.show_log_entry(self.log.get(row))
 
 class OptionsPanel(JPanel):
     def __init__(self):
