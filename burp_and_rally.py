@@ -115,23 +115,39 @@ class GitLog(object):
         home = os.path.expanduser("~")
         self.repo_path = os.path.join(home, ".burp-and-rally")
 
-        self.req_dir = os.path.join(self.repo_path, "requested")
-        self.req_path = os.path.join(self.req_dir, "request")
-        self.req_ts_path = os.path.join(self.req_dir, "timestamp")
-
-        self.resp_dir = os.path.join(self.repo_path, "responded")
-        self.resp_req_path = os.path.join(self.resp_dir, "request")
-        self.resp_resp_path = os.path.join(self.resp_dir, "response")
-        self.resp_ts_path = os.path.join(self.resp_dir, "timestamp")
+        self.repeater_dir = os.path.join(self.repo_path, "repeater")
 
         if not os.path.exists(self.repo_path):
             subprocess.check_call(["git", "init", self.repo_path], cwd=home)
-            os.mkdir(self.req_dir)
-            os.mkdir(self.resp_dir)
+            os.mkdir(self.repeater_dir)
 
     def add_entry(self, entry):
-        pass
- 
+        # LogEntry = namedtuple('LogEntry', ['tool', 'requestResponse', 'url', 'timestamp'])
+        if entry.tool == self.burp_callbacks.TOOL_REPEATER:
+            entry_dir = os.path.join(self.repeater_dir, entry.timestamp)
+            if not os.path.exists(entry_dir):
+                os.mkdir(entry_dir)
+
+            service = entry.requestResponse.getHttpService()
+
+            shared = [("host", service.getHost()),
+                      ("port", str(service.getPort())),
+                      ("protocol", service.getProtocol()),
+                      ("url", entry.url.toString())]
+            file_only = [("request", entry.requestResponse.getRequest()),
+                         ("response", entry.requestResponse.getResponse())]
+            
+            for filename, data in shared + file_only:
+                if data:
+                    path = os.path.join(entry_dir, filename)
+                    open(path, "wb").write(data)
+                    subprocess.check_call(["git", "add", path], 
+                            cwd=self.repo_path)
+
+            commit_msg = "\n".join([": ".join(t) for t in shared])
+            subprocess.check_call(["git", "commit", "-m", "%s" % commit_msg], 
+                    cwd=self.repo_path)
+
 
 '''
 Implementation of extension's UI.
@@ -291,3 +307,5 @@ class SendPanel(JPanel):
         self.add(label)
         # see JButton::addActionListener
         self.add(sendButton)
+
+        # TODO next: add "who" col to table! will need to add .whoami() to GitLog and add it to entry
