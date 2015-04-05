@@ -6,7 +6,7 @@ from java.util import ArrayList, List
 from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, SwingUtilities, JPanel, JButton, JLabel, JMenuItem
 from javax.swing.table import AbstractTableModel
 from threading import Lock
-import datetime
+import datetime, os, hashlib
 
 
 '''
@@ -115,32 +115,53 @@ class GitLog(object):
         home = os.path.expanduser("~")
         self.repo_path = os.path.join(home, ".burp-and-rally")
 
-        self.repeater_dir = os.path.join(self.repo_path, "repeater")
-
         if not os.path.exists(self.repo_path):
             subprocess.check_call(["git", "init", self.repo_path], cwd=home)
-            os.mkdir(self.repeater_dir)
 
     def add_entry(self, entry):
-        # LogEntry = namedtuple('LogEntry', ['tool', 'requestResponse', 'url', 'timestamp'])
+
         if entry.tool == self.burp_callbacks.TOOL_REPEATER:
-            entry_dir = os.path.join(self.repeater_dir, entry.timestamp)
-            if not os.path.exists(entry_dir):
-                os.mkdir(entry_dir)
-
             service = entry.requestResponse.getHttpService()
+            host = service.getHost()
 
-            shared = [("host", service.getHost()),
+            shared = [("host", host),
                       ("port", str(service.getPort())),
                       ("protocol", service.getProtocol()),
-                      ("url", entry.url.toString())]
+                      ("url", entry.url.toString()),
+                      ("timestamp", entry.timestamp)]
             file_only = [("request", entry.requestResponse.getRequest()),
                          ("response", entry.requestResponse.getResponse())]
-            
+
+
+            # Make directory for this entry
+
+            host_dir = os.path.join(self.repo_path, host)
+            if not os.path.exists(host_dir):
+                os.mkdir(host_dir)
+
+            tool_dir = os.path.join(host_dir, "repeater")
+            if not os.path.exists(tool_dir):
+                os.mkdir(tool_dir)
+
+            md5 = hashlib.md5()
+            for k, v in shared + file_only:
+                if v:
+                    md5.update(k)
+                    md5.update(v[:2048])
+            entry_dir = os.path.join(tool_dir, md5.hexdigest())
+            if not os.path.exists(entry_dir):
+                os.mkdir(entry_dir)
+        
+
+            # Add repeater data to git repo
+
             for filename, data in shared + file_only:
                 if data:
                     path = os.path.join(entry_dir, filename)
-                    open(path, "wb").write(data)
+                    with open(path, "wb") as fp:
+                        fp.write(data)
+                        fp.flush()
+                        fp.close()
                     subprocess.check_call(["git", "add", path], 
                             cwd=self.repo_path)
 
