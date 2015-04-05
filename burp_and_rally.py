@@ -23,7 +23,7 @@ class BurpExtender(IBurpExtender, IHttpListener):
     
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
-        callbacks.setExtensionName("Burp and Rally")
+        callbacks.setExtensionName("Burp Party")
         
         self.log = Log(callbacks)
         self.ui = BurpUi(callbacks, self.log)
@@ -41,7 +41,7 @@ Logging functionality.
 '''
 
 from collections import namedtuple
-LogEntry = namedtuple('LogEntry', ['tool', 'requestResponse', 'url', 'timestamp'])
+LogEntry = namedtuple('LogEntry', ['tool', 'requestResponse', 'url', 'timestamp', 'who'])
 class Log(AbstractTableModel):
     '''
     Log of burp activity: commands handles both the Burp UI log and the git 
@@ -65,7 +65,7 @@ class Log(AbstractTableModel):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self._lock.acquire()
         row = self._log.size()
-        entry = LogEntry(toolFlag, self._callbacks.saveBuffersToTempFiles(messageInfo), self._helpers.analyzeRequest(messageInfo).getUrl(), timestamp)
+        entry = LogEntry(toolFlag, self._callbacks.saveBuffersToTempFiles(messageInfo), self._helpers.analyzeRequest(messageInfo).getUrl(), timestamp, self._git_log.whoami())
         self._log.add(entry)
         self.fireTableRowsInserted(row, row)
         self._lock.release()
@@ -79,7 +79,7 @@ class Log(AbstractTableModel):
             return 0
     
     def getColumnCount(self):
-        return 3
+        return 4
     
     def getColumnName(self, columnIndex):
         if columnIndex == 0:
@@ -88,6 +88,8 @@ class Log(AbstractTableModel):
             return "Tool"
         elif columnIndex == 2:
             return "URL"
+        elif columnIndex == 3:
+            return "Who"
         return ""
 
     def get(self, rowIndex):
@@ -101,6 +103,8 @@ class Log(AbstractTableModel):
             return self._callbacks.getToolName(logEntry.tool)
         elif columnIndex == 2:
             return logEntry.url.toString()
+        elif columnIndex == 3:
+            return logEntry.who
 
         return ""
 
@@ -128,7 +132,8 @@ class GitLog(object):
                       ("port", str(service.getPort())),
                       ("protocol", service.getProtocol()),
                       ("url", entry.url.toString()),
-                      ("timestamp", entry.timestamp)]
+                      ("timestamp", entry.timestamp),
+                      ("who", entry.who)]
             file_only = [("request", entry.requestResponse.getRequest()),
                          ("response", entry.requestResponse.getResponse())]
 
@@ -169,6 +174,10 @@ class GitLog(object):
             subprocess.check_call(["git", "commit", "-m", "%s" % commit_msg], 
                     cwd=self.repo_path)
 
+    def whoami(self):
+        return subprocess.check_output(["git", "config", "user.name"], 
+                cwd=self.repo_path)
+
 
 '''
 Implementation of extension's UI.
@@ -204,7 +213,7 @@ class BurpUi(ITab):
 
       
     def getTabCaption(self):
-        return "Rally"
+        return "Party"
        
     def getUiComponent(self):
         return self._splitpane
@@ -221,7 +230,7 @@ class RightClickHandler(IContextMenuFactory):
         tool = invocation.getToolFlag()
         if tool == self.callbacks.TOOL_REPEATER:
             if context in [invocation.CONTEXT_MESSAGE_EDITOR_REQUEST, invocation.CONTEXT_MESSAGE_VIEWER_RESPONSE]:
-                item = JMenuItem("Send to Rally")
+                item = JMenuItem("Send to Party")
                 item.addActionListener(self.RepeaterHandler(self.callbacks, invocation, self.log))
                 items = ArrayList()
                 items.add(item)
@@ -328,5 +337,4 @@ class SendPanel(JPanel):
         self.add(label)
         # see JButton::addActionListener
         self.add(sendButton)
-
-        # TODO next: add "who" col to table! will need to add .whoami() to GitLog and add it to entry
+        # TODO: add ability to load content from repo, then flesh out adding back to tool (repeater)
