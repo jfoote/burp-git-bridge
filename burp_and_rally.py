@@ -32,16 +32,34 @@ class BurpExtender(IBurpExtender, IHttpListener):
         callbacks.registerHttpListener(self)
 
     def processHttpMessage(self, toolFlag, messageIsRequest, messageInfo):
-        if not messageIsRequest:
-            self.log.add_network_entry(toolFlag, messageInfo)
+        pass
+        #if not messageIsRequest:
+        #    self.log.add_network_entry(toolFlag, messageInfo)
        
 
 '''
 Logging functionality.
 '''
 
-from collections import namedtuple
-LogEntry = namedtuple('LogEntry', ['tool', 'requestResponse', 'url', 'timestamp', 'who'])
+class LogEntry(object):
+    def __init__(self, *args, **kwargs):
+        self.__dict__ = kwargs
+
+class LogHttpService():
+    def __init__(self, host, port, protocol):
+        self.host = host
+        self.port = port
+        self.protocol = protocol
+
+    def getHost(self):
+        return self.host
+
+    def getPort(self):
+        return self.port
+
+    def getProtocol(self):
+        return self.protocol
+
 class Log():
     '''
     Log of burp activity: commands handles both the Burp UI log and the git 
@@ -62,18 +80,35 @@ class Log():
         self.gui_log.ui = ui
 
     def reload(self):
-        # TODO:
-        # self.gui_log.clear() (needs implemented)
-        # for entry in self.git_log.burp_entries(): (needs implemented)
-        #     self.gui_log.add_entry(entry)
-        pass
+        import sys
+        sys.stdout.write("reload called\n")
+        sys.stdout.flush()
+        sys.stderr.write("reload called\n")
+        sys.stderr.flush()
+        self.gui_log.clear() 
+        # TODO: Stopped here; seems that entries is not getting invoked (?); time to parse out objects for unit test.
+        for entry in self.git_log.entries():
+            if entry.tool == "repeater":
+                self.gui_log.add_repeater_entry(entry)
 
-    def add_network_entry(self, toolFlag, messageInfo):
+    def add_repeater_entry(self, messageInfo):
+        '''
+        Grab salient info from Burp and store it to GUI and Git logs
+        '''
 
+        service = messageInfo.getHttpService() 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        entry = LogEntry(toolFlag, self._callbacks.saveBuffersToTempFiles(messageInfo), self._helpers.analyzeRequest(messageInfo).getUrl(), timestamp, self.git_log.whoami())
-        self.gui_log.add_entry(entry)
-        self.git_log.add_entry(entry)
+        entry = LogEntry(tool="repeater",
+                host=service.getHost(), 
+                port=service.getPort(), 
+                protocol=service.getProtocol(), 
+                url=str(self._helpers.analyzeRequest(messageInfo).getUrl()), 
+                timestamp=timestamp,
+                who=self.git_log.whoami(),
+                request=messageInfo.getRequest(),
+                response=messageInfo.getResponse())
+        self.gui_log.add_repeater_entry(entry)
+        self.git_log.add_repeater_entry(entry)
 
 class GuiLog(AbstractTableModel):
     '''
@@ -90,17 +125,21 @@ class GuiLog(AbstractTableModel):
         self._helpers = callbacks.getHelpers()
 
     def clear(self):
-        # TODO: clear this table model
-        pass
+        self._lock.acquire()
+        last = self._log.size()
+        self._log.clear()
+        self.fireTableRowsDeleted(0, last-1)
+        # Note: if callees modify table this could deadlock
+        self._lock.release()
 
-    def add_entry(self, entry):
+    def add_repeater_entry(self, entry):
 
-        if entry.tool == self._callbacks.TOOL_REPEATER:
-            self._lock.acquire()
-            row = self._log.size()
-            self._log.add(entry)
-            self.fireTableRowsInserted(row, row)
-            self._lock.release()
+        self._lock.acquire()
+        row = self._log.size()
+        self._log.add(entry)
+        # Note: if callees modify table this could deadlock
+        self.fireTableRowsInserted(row, row)
+        self._lock.release()
 
     def getRowCount(self):
         try:
@@ -130,9 +169,9 @@ class GuiLog(AbstractTableModel):
         if columnIndex == 0:
             return logEntry.timestamp
         elif columnIndex == 1:
-            return self._callbacks.getToolName(logEntry.tool)
+            return logEntry.tool.capitalize()
         elif columnIndex == 2:
-            return logEntry.url.toString()
+            return logEntry.url
         elif columnIndex == 3:
             return logEntry.who
 
@@ -140,9 +179,9 @@ class GuiLog(AbstractTableModel):
 
 import os, subprocess
 class GitLog(object):
-    def __init__(self, burp_callbacks):
+    def __init__(self, callbacks):
 
-        self.burp_callbacks = burp_callbacks
+        self.callbacks = callbacks
 
         # Set directory paths and if necessary, init git repo
 
@@ -152,57 +191,74 @@ class GitLog(object):
         if not os.path.exists(self.repo_path):
             subprocess.check_call(["git", "init", self.repo_path], cwd=home)
 
-    def add_entry(self, entry):
+    def add_repeater_entry(self, entry):
 
-        if entry.tool == self.burp_callbacks.TOOL_REPEATER:
-            service = entry.requestResponse.getHttpService()
-            host = service.getHost()
+        # Make directory for this entry
 
-            shared = [("host", host),
-                      ("port", str(service.getPort())),
-                      ("protocol", service.getProtocol()),
-                      ("url", entry.url.toString()),
-                      ("timestamp", entry.timestamp),
-                      ("who", entry.who)]
-            file_only = [("request", entry.requestResponse.getRequest()),
-                         ("response", entry.requestResponse.getResponse())]
+        host_dir = os.path.join(self.repo_path, entry.host)
+        if not os.path.exists(host_dir):
+            os.mkdir(host_dir)
 
+        tool_dir = os.path.join(host_dir, "repeater")
+        if not os.path.exists(tool_dir):
+            os.mkdir(tool_dir)
 
-            # Make directory for this entry
+        md5 = hashlib.md5()
+        for k, v in entry.__dict__.iteritems():
+            if v: 
+                if not getattr(v, "__getitem__", False):
+                    v = str(v)
+                md5.update(k)
+                md5.update(v[:2048])
 
-            host_dir = os.path.join(self.repo_path, host)
-            if not os.path.exists(host_dir):
-                os.mkdir(host_dir)
-
-            tool_dir = os.path.join(host_dir, "repeater")
-            if not os.path.exists(tool_dir):
-                os.mkdir(tool_dir)
-
-            md5 = hashlib.md5()
-            for k, v in shared + file_only:
-                if v:
-                    md5.update(k)
-                    md5.update(v[:2048])
-            entry_dir = os.path.join(tool_dir, md5.hexdigest())
-            if not os.path.exists(entry_dir):
-                os.mkdir(entry_dir)
+        entry_dir = os.path.join(tool_dir, md5.hexdigest())
+        if not os.path.exists(entry_dir):
+            os.mkdir(entry_dir)
         
 
-            # Add repeater data to git repo
+        # Add repeater data to git repo
 
-            for filename, data in shared + file_only:
-                if data:
-                    path = os.path.join(entry_dir, filename)
-                    with open(path, "wb") as fp:
-                        fp.write(data)
-                        fp.flush()
-                        fp.close()
-                    subprocess.check_call(["git", "add", path], 
-                            cwd=self.repo_path)
+        for filename, data in entry.__dict__.iteritems():
+            if data:
+                if not getattr(data, "__getitem__", False):
+                    data = str(data)
+                path = os.path.join(entry_dir, filename)
+                with open(path, "wb") as fp:
+                    fp.write(data)
+                    fp.flush()
+                    fp.close()
+                subprocess.check_call(["git", "add", path], 
+                        cwd=self.repo_path)
 
-            commit_msg = "\n".join([": ".join(t) for t in shared])
-            subprocess.check_call(["git", "commit", "-m", "%s" % commit_msg], 
-                    cwd=self.repo_path)
+        subprocess.check_call(["git", "commit", "-m", "Added Repeater entry"], 
+                cwd=self.repo_path)
+
+
+    def entries(self):
+        import sys
+        sys.stderr.write("entries called\n")
+        sys.stderr.flush()
+
+        def load_entry(tool_path):
+            entry = LogEntry()
+            for filename in os.listdir(tool_path):
+                file_path = os.path.join(tool_path, filename)
+                if os.path.isdir(file_path):
+                    continue
+                entry.__dict__[filename] = open(file_path, "rb").read()
+            return entry
+
+        for host_dir in os.listdir(self.repo_path):
+            host_path = os.path.join(self.repo_path, host_dir)
+            if not os.path.isdir(host_path):
+                continue
+            for tool_dir in os.listdir(host_path):
+                tool_path = os.path.join(host_path, tool_dir)
+                if not os.path.isdir(tool_path):
+                    continue
+                entry = load_entry(tool_path)
+                entry.__dict__['tool'] = tool_dir
+                yield entry
 
     def whoami(self):
         return subprocess.check_output(["git", "config", "user.name"], 
@@ -279,7 +335,7 @@ class RightClickHandler(IContextMenuFactory):
             import sys
             sys.stdout.write("actionPerformed\n")
             for message in self.invocation.getSelectedMessages():
-                self.log.add_network_entry(self.callbacks.TOOL_REPEATER, message) 
+                self.log.add_repeater_entry(message) 
 
 class UiBottomPane(JTabbedPane, IMessageEditorController):
     '''
@@ -299,8 +355,8 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
         '''
         Shows the log entry in the bottom pane of the UI
         '''
-        self._requestViewer.setMessage(log_entry.requestResponse.getRequest(), True)
-        self._responseViewer.setMessage(log_entry.requestResponse.getResponse(), False)
+        self._requestViewer.setMessage(log_entry.request, True)
+        self._responseViewer.setMessage(log_entry.response, False)
         self._currentlyDisplayedItem = log_entry
 
         
@@ -352,7 +408,7 @@ class UiLogTable(JTable):
         '''
     
         JTable.changeSelection(self, row, col, toggle, extend)
-        self.bottom_pane.show_log_entry(self.log.get(row))
+        self.bottom_pane.show_log_entry(self.gui_log.get(row))
 
 class OptionsPanel(JPanel):
     def __init__(self, log):
@@ -364,7 +420,7 @@ class ReloadAction(ActionListener):
     def __init__(self, log):
         self.log = log
 
-    def actionPerformed(event):
+    def actionPerformed(self, event):
         self.log.reload()
 
 class SendPanel(JPanel):
