@@ -27,7 +27,7 @@ class BurpExtender(IBurpExtender, IHttpListener):
         
         self.log = Log(callbacks)
         self.ui = BurpUi(callbacks, self.log)
-        self.log.ui = self.ui
+        self.log.setUi(self.ui)
        
         callbacks.registerHttpListener(self)
 
@@ -42,7 +42,7 @@ Logging functionality.
 
 from collections import namedtuple
 LogEntry = namedtuple('LogEntry', ['tool', 'requestResponse', 'url', 'timestamp', 'who'])
-class Log(AbstractTableModel):
+class Log():
     '''
     Log of burp activity: commands handles both the Burp UI log and the git 
     repo log.
@@ -52,25 +52,55 @@ class Log(AbstractTableModel):
 
     def __init__(self, callbacks):
         self.ui = None
+        self._callbacks = callbacks
+        self._helpers = callbacks.getHelpers()
+        self.gui_log = GuiLog(callbacks)
+        self.git_log = GitLog(callbacks)
+
+    def setUi(self, ui):
+        self.ui = ui
+        self.gui_log.ui = ui
+
+    def reload(self):
+        # TODO:
+        # self.gui_log.clear() (needs implemented)
+        # for entry in self.git_log.burp_entries(): (needs implemented)
+        #     self.gui_log.add_entry(entry)
+        pass
+
+    def add_network_entry(self, toolFlag, messageInfo):
+
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        entry = LogEntry(toolFlag, self._callbacks.saveBuffersToTempFiles(messageInfo), self._helpers.analyzeRequest(messageInfo).getUrl(), timestamp, self.git_log.whoami())
+        self.gui_log.add_entry(entry)
+        self.git_log.add_entry(entry)
+
+class GuiLog(AbstractTableModel):
+    '''
+    Log of burp activity: commands handles both the Burp UI log and the git 
+    repo log.
+    Acts as a AbstractTableModel for that table that is show in the UI tab. 
+    '''
+
+    def __init__(self, callbacks):
+        self.ui = None
         self._log = ArrayList()
         self._lock = Lock()
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
-        self._git_log = GitLog(callbacks)
 
-    def add_network_entry(self, toolFlag, messageInfo):
+    def clear(self):
+        # TODO: clear this table model
+        pass
 
-        # Add to self (the in-Burp model of the log), then add to git repo
+    def add_entry(self, entry):
 
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self._lock.acquire()
-        row = self._log.size()
-        entry = LogEntry(toolFlag, self._callbacks.saveBuffersToTempFiles(messageInfo), self._helpers.analyzeRequest(messageInfo).getUrl(), timestamp, self._git_log.whoami())
-        self._log.add(entry)
-        self.fireTableRowsInserted(row, row)
-        self._lock.release()
-
-        self._git_log.add_entry(entry)
+        if entry.tool == self._callbacks.TOOL_REPEATER:
+            self._lock.acquire()
+            row = self._log.size()
+            self._log.add(entry)
+            self.fireTableRowsInserted(row, row)
+            self._lock.release()
 
     def getRowCount(self):
         try:
@@ -293,11 +323,11 @@ class UiTopPane(JTabbedPane):
     The top pane in this extension's UI tab. It shows either the in-burp 
     version of the Log or an "Options" tab (name TBD).
     '''
-    def __init__(self, callbacks, bottom_pane, log_model):
-        self.logTable = UiLogTable(callbacks, bottom_pane, log_model)
+    def __init__(self, callbacks, bottom_pane, log):
+        self.logTable = UiLogTable(callbacks, bottom_pane, log.gui_log)
         scrollPane = JScrollPane(self.logTable)
         self.addTab("Log", scrollPane)
-        options = OptionsPanel()
+        options = OptionsPanel(log)
         self.addTab("Configuration", options)
         callbacks.customizeUiComponent(self)
 
@@ -309,11 +339,11 @@ class UiLogTable(JTable):
     Note, as a JTable, this stays synchronized with the underlying
     ArrayList. 
     '''
-    def __init__(self, callbacks, bottom_pane, log):
+    def __init__(self, callbacks, bottom_pane, gui_log):
         self.bottom_pane = bottom_pane
         self._callbacks = callbacks
-        self.log = log
-        self.setModel(log)
+        self.gui_log = gui_log
+        self.setModel(gui_log)
         callbacks.customizeUiComponent(self)
     
     def changeSelection(self, row, col, toggle, extend):
@@ -325,10 +355,17 @@ class UiLogTable(JTable):
         self.bottom_pane.show_log_entry(self.log.get(row))
 
 class OptionsPanel(JPanel):
-    def __init__(self):
+    def __init__(self, log):
         reloadButton = JButton("Reload UI from git repo")
-        # see JButton::addActionListener
+        reloadButton.addActionListener(ReloadAction(log))
         self.add(reloadButton)
+
+class ReloadAction(ActionListener):
+    def __init__(self, log):
+        self.log = log
+
+    def actionPerformed(event):
+        self.log.reload()
 
 class SendPanel(JPanel):
     def __init__(self):
