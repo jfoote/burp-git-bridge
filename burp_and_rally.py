@@ -83,13 +83,7 @@ class Log():
         self.gui_log.ui = ui
 
     def reload(self):
-        import sys
-        sys.stdout.write("reload called\n")
-        sys.stdout.flush()
-        sys.stderr.write("reload called\n")
-        sys.stderr.flush()
         self.gui_log.clear() 
-        # TODO: Stopped here; seems that entries is not getting invoked (?); time to parse out objects for unit test.
         for entry in self.git_log.entries():
             if entry.tool == "repeater":
                 self.gui_log.add_repeater_entry(entry)
@@ -351,19 +345,21 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
         self.sendPanel = SendPanel()
         self._requestViewer = callbacks.createMessageEditor(self, False)
         self._responseViewer = callbacks.createMessageEditor(self, False)
-        self.addTab("Request", self._requestViewer.getComponent())
-        self.addTab("Response", self._responseViewer.getComponent())
-        self.addTab("Send to Tools", self.sendPanel)
         callbacks.customizeUiComponent(self)
 
     def show_log_entry(self, log_entry):
         '''
         Shows the log entry in the bottom pane of the UI
         '''
-        self._requestViewer.setMessage(log_entry.request, True)
-        self._responseViewer.setMessage(log_entry.response, False)
+        self.removeAll()
+        if getattr(log_entry, "request", False):
+            self.addTab("Request", self._requestViewer.getComponent())
+            self._requestViewer.setMessage(log_entry.request, True)
+        if getattr(log_entry, "response", False):
+            self.addTab("Response", self._responseViewer.getComponent())
+            self._responseViewer.setMessage(log_entry.response, False)
+        self.addTab("Send to Tools", self.sendPanel)
         self._currentlyDisplayedItem = log_entry
-
         
     '''
     The three methods below implement IMessageEditorController st. requests 
