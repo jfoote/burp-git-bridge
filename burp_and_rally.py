@@ -7,6 +7,7 @@ from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, SwingUtili
 from javax.swing.table import AbstractTableModel
 from threading import Lock
 import datetime, os, hashlib
+import sys
 
 
 '''
@@ -20,6 +21,8 @@ class BurpExtender(IBurpExtender, IHttpListener):
     '''
     
     def	registerExtenderCallbacks(self, callbacks):
+        sys.stdout = callbacks.getStdout()
+        sys.stderr = callbacks.getStderr()
     
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
@@ -127,8 +130,9 @@ class GuiLog(AbstractTableModel):
     def clear(self):
         self._lock.acquire()
         last = self._log.size()
-        self._log.clear()
-        self.fireTableRowsDeleted(0, last-1)
+        if last > 0:
+            self._log.clear()
+            self.fireTableRowsDeleted(0, last-1)
         # Note: if callees modify table this could deadlock
         self._lock.release()
 
@@ -235,20 +239,19 @@ class GitLog(object):
 
 
     def entries(self):
-        import sys
-        sys.stderr.write("entries called\n")
-        sys.stderr.flush()
 
-        def load_entry(tool_path):
+        def load_entry(entry_path):
             entry = LogEntry()
-            for filename in os.listdir(tool_path):
-                file_path = os.path.join(tool_path, filename)
+            for filename in os.listdir(entry_path):
+                file_path = os.path.join(entry_path, filename)
                 if os.path.isdir(file_path):
                     continue
                 entry.__dict__[filename] = open(file_path, "rb").read()
             return entry
 
         for host_dir in os.listdir(self.repo_path):
+            if host_dir == ".git":
+                continue
             host_path = os.path.join(self.repo_path, host_dir)
             if not os.path.isdir(host_path):
                 continue
@@ -256,9 +259,11 @@ class GitLog(object):
                 tool_path = os.path.join(host_path, tool_dir)
                 if not os.path.isdir(tool_path):
                     continue
-                entry = load_entry(tool_path)
-                entry.__dict__['tool'] = tool_dir
-                yield entry
+                for entry_dir in os.listdir(tool_path):
+                    entry_path = os.path.join(tool_path, entry_dir)
+                    entry = load_entry(entry_path)
+                    entry.__dict__['tool'] = tool_dir
+                    yield entry
 
     def whoami(self):
         return subprocess.check_output(["git", "config", "user.name"], 
