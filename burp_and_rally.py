@@ -67,8 +67,7 @@ class Log():
     '''
     Log of burp activity: commands handles both the Burp UI log and the git 
     repo log.
-    Acts as a AbstractTableModel for that table that is show in the UI tab. 
-    Used by BurpExtender (for now) when it logs input events.
+    Used by BurpExtender when it logs input events.
     '''
 
     def __init__(self, callbacks):
@@ -280,6 +279,7 @@ class BurpUi(ITab):
         self._splitpane = JSplitPane(JSplitPane.VERTICAL_SPLIT)
         self.bottom_pane = UiBottomPane(callbacks)
         self.top_pane = UiTopPane(callbacks, self.bottom_pane, log)
+        self.bottom_pane.setLogTable(self.top_pane.logTable)
         self._splitpane.setLeftComponent(self.top_pane)
         self._splitpane.setRightComponent(self.bottom_pane)
 
@@ -342,10 +342,17 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
     whatever is selected in the top pane.
     '''
     def __init__(self, callbacks):
-        self.sendPanel = SendPanel()
+        self.sendPanel = SendPanel(callbacks)
         self._requestViewer = callbacks.createMessageEditor(self, False)
         self._responseViewer = callbacks.createMessageEditor(self, False)
         callbacks.customizeUiComponent(self)
+
+    def setLogTable(self, log_table):
+        '''
+        Passes the Log table to the "Send to Tools" component so it can grab
+        the selected rows
+        '''
+        self.sendPanel.log_table = log_table
 
     def show_log_entry(self, log_entry):
         '''
@@ -402,6 +409,10 @@ class UiLogTable(JTable):
         self.gui_log = gui_log
         self.setModel(gui_log)
         callbacks.customizeUiComponent(self)
+
+    def getSelectedEntries(self):
+        for i in self.getSelectedRows():
+            yield self.gui_log.get(i)
     
     def changeSelection(self, row, col, toggle, extend):
         '''
@@ -424,11 +435,21 @@ class ReloadAction(ActionListener):
     def actionPerformed(self, event):
         self.log.reload()
 
-class SendPanel(JPanel):
-    def __init__(self):
+class SendPanel(JPanel, ActionListener):
+    def __init__(self, callbacks):
+        self.callbacks = callbacks
         label = JLabel("Send selected results to respective burp tools:")
         sendButton = JButton("Send")
+        sendButton.addActionListener(self)
         self.add(label)
-        # see JButton::addActionListener
         self.add(sendButton)
-        # TODO: add ability to load content from repo, then flesh out adding back to tool (repeater)
+        self.log_table = None # to be set by caller
+
+    def actionPerformed(self, actionEvent):
+        for entry in self.log_table.getSelectedEntries():
+            if entry.tool == "repeater":
+                https = False
+                if entry.protocol == "https":
+                    https = True
+                self.callbacks.sendToRepeater(entry.host, int(entry.port), 
+                        https, entry.request, entry.timestamp)
