@@ -84,16 +84,15 @@ class Log():
     def reload(self):
         self.gui_log.clear() 
         for entry in self.git_log.entries():
-            if entry.tool == "repeater":
-                self.gui_log.add_repeater_entry(entry)
+            self.gui_log.add_entry(entry)
 
     def add_repeater_entry(self, messageInfo):
         '''
         Grab salient info from Burp and store it to GUI and Git logs
         '''
 
-        service = messageInfo.getHttpService() 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        service = messageInfo.getHttpService() 
         entry = LogEntry(tool="repeater",
                 host=service.getHost(), 
                 port=service.getPort(), 
@@ -103,8 +102,50 @@ class Log():
                 who=self.git_log.whoami(),
                 request=messageInfo.getRequest(),
                 response=messageInfo.getResponse())
-        self.gui_log.add_repeater_entry(entry)
+        self.gui_log.add_entry(entry)
         self.git_log.add_repeater_entry(entry)
+
+    def add_scanner_entry(self, scanIssue):
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Gather info from messages. Oi, should probably re-design this.
+
+        messages = []
+        for message in scanIssue.getHttpMessages():
+            service = message.getHttpService() 
+            msg_entry = LogEntry(tool="scanner_message",
+                    host=service.getHost(), 
+                    port=service.getPort(), 
+                    protocol=service.getProtocol(), 
+                    comment=message.getComment(),
+                    highlight=message.getHighlight(),
+                    request=message.getRequest(),
+                    response=message.getResponse())
+            messages.append(msg_entry)
+
+
+        # Gather info for scan issue
+
+        service = scanIssue.getHttpService() 
+        entry = LogEntry(tool="scanner",
+                timestamp=timestamp,
+                who=self.git_log.whoami(),
+                messages=messages,
+                host=service.getHost(), 
+                port=service.getPort(), 
+                protocol=service.getProtocol(), 
+                confidence=scanIssue.getConfidence(),
+                issue_background=scanIssue.getIssueBackground(),
+                issue_detail=scanIssue.getIssueDetail(),
+                issue_name=scanIssue.getIssueName(),
+                issue_type=scanIssue.getIssueType(),
+                remediation_background=scanIssue.getRemediationBackground(),
+                remediation_detail=scanIssue.getRemediationDetail(),
+                severity=scanIssue.getSeverity(),
+                url=str(scanIssue.getUrl()))
+
+        self.gui_log.add_entry(entry)
+        # TODO: self.git_log.add_scanner_entry(entry)
 
 class GuiLog(AbstractTableModel):
     '''
@@ -129,7 +170,7 @@ class GuiLog(AbstractTableModel):
         # Note: if callees modify table this could deadlock
         self._lock.release()
 
-    def add_repeater_entry(self, entry):
+    def add_entry(self, entry):
 
         self._lock.acquire()
         row = self._log.size()
@@ -148,15 +189,15 @@ class GuiLog(AbstractTableModel):
         return 4
     
     def getColumnName(self, columnIndex):
-        if columnIndex == 0:
-            return "Time added"
-        elif columnIndex == 1:
-            return "Tool"
-        elif columnIndex == 2:
-            return "URL"
-        elif columnIndex == 3:
-            return "Who"
-        return ""
+        cols = ["Time added", 
+                "Tool",
+                "URL",
+                "Issue",
+                "Who"]
+        try:
+            return cols[columnIndex]
+        except KeyError:
+            return ""
 
     def get(self, rowIndex):
         return self._log.get(rowIndex)
@@ -170,6 +211,11 @@ class GuiLog(AbstractTableModel):
         elif columnIndex == 2:
             return logEntry.url
         elif columnIndex == 3:
+            if logEntry.tool == "scanner":
+                return logEntry.issue_name
+            else:
+                return "N/A"
+        elif columnIndex == 4:
             return logEntry.who
 
         return ""
@@ -320,9 +366,26 @@ class RightClickHandler(IContextMenuFactory):
                 items = ArrayList()
                 items.add(item)
                 return items
+        elif tool == self.callbacks.TOOL_SCANNER:
+            if context in [invocation.CONTEXT_SCANNER_RESULTS]:
+                item = JMenuItem("Send to Party")
+                item.addActionListener(self.ScannerHandler(self.callbacks, invocation, self.log))
+                items = ArrayList()
+                items.add(item)
+                return items
         else:
             # TODO: add support for other tools
             pass
+
+    class ScannerHandler(ActionListener):
+        def __init__(self, callbacks, invocation, log):
+            self.callbacks = callbacks
+            self.invocation = invocation
+            self.log = log
+
+        def actionPerformed(self, actionEvent):
+            for issue in self.invocation.getSelectedIssues():
+                self.log.add_scanner_entry(issue) 
 
     class RepeaterHandler(ActionListener):
         def __init__(self, callbacks, invocation, log):
@@ -331,8 +394,6 @@ class RightClickHandler(IContextMenuFactory):
             self.log = log
 
         def actionPerformed(self, actionEvent):
-            import sys
-            sys.stdout.write("actionPerformed\n")
             for message in self.invocation.getSelectedMessages():
                 self.log.add_repeater_entry(message) 
 
