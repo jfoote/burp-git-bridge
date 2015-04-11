@@ -11,7 +11,7 @@ import sys
 
 
 '''
-Entry point for Burp and Rally extension.
+Entry point for Burp Chorus extension.
 '''
 
 class BurpExtender(IBurpExtender, IHttpListener):
@@ -26,7 +26,7 @@ class BurpExtender(IBurpExtender, IHttpListener):
     
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
-        callbacks.setExtensionName("Burp Party")
+        callbacks.setExtensionName("Burp Chorus")
         
         self.log = Log(callbacks)
         self.ui = BurpUi(callbacks, self.log)
@@ -229,7 +229,7 @@ class GitLog(object):
         # Set directory paths and if necessary, init git repo
 
         home = os.path.expanduser("~")
-        self.repo_path = os.path.join(home, ".burp-and-rally")
+        self.repo_path = os.path.join(home, ".burp-chorus")
 
         if not os.path.exists(self.repo_path):
             subprocess.check_call(["git", "init", self.repo_path], cwd=home)
@@ -344,7 +344,7 @@ class BurpUi(ITab):
 
       
     def getTabCaption(self):
-        return "Party"
+        return "Chorus"
        
     def getUiComponent(self):
         return self._splitpane
@@ -361,14 +361,14 @@ class RightClickHandler(IContextMenuFactory):
         tool = invocation.getToolFlag()
         if tool == self.callbacks.TOOL_REPEATER:
             if context in [invocation.CONTEXT_MESSAGE_EDITOR_REQUEST, invocation.CONTEXT_MESSAGE_VIEWER_RESPONSE]:
-                item = JMenuItem("Send to Party")
+                item = JMenuItem("Send to Chorus")
                 item.addActionListener(self.RepeaterHandler(self.callbacks, invocation, self.log))
                 items = ArrayList()
                 items.add(item)
                 return items
         elif tool == self.callbacks.TOOL_SCANNER:
             if context in [invocation.CONTEXT_SCANNER_RESULTS]:
-                item = JMenuItem("Send to Party")
+                item = JMenuItem("Send to Chorus")
                 item.addActionListener(self.ScannerHandler(self.callbacks, invocation, self.log))
                 items = ArrayList()
                 items.add(item)
@@ -451,7 +451,7 @@ class UiTopPane(JTabbedPane):
     def __init__(self, callbacks, bottom_pane, log):
         self.logTable = UiLogTable(callbacks, bottom_pane, log.gui_log)
         scrollPane = JScrollPane(self.logTable)
-        self.addTab("Log", scrollPane)
+        self.addTab("Notes", scrollPane)
         options = OptionsPanel(log)
         self.addTab("Configuration", options)
         callbacks.customizeUiComponent(self)
