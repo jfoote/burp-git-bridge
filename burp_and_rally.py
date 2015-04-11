@@ -237,6 +237,7 @@ class GitLog(object):
     def add_repeater_entry(self, entry):
 
         # Make directory for this entry
+        # TODO: make this pythonic/DRY
 
         host_dir = os.path.join(self.repo_path, entry.host)
         if not os.path.exists(host_dir):
@@ -246,6 +247,10 @@ class GitLog(object):
         if not os.path.exists(tool_dir):
             os.mkdir(tool_dir)
 
+        time_dir = os.path.join(tool_dir, entry.timestamp.replace(":", "."))
+        if not os.path.exists(time_dir):
+            os.mkdir(time_dir)
+
         md5 = hashlib.md5()
         for k, v in entry.__dict__.iteritems():
             if v: 
@@ -254,7 +259,7 @@ class GitLog(object):
                 md5.update(k)
                 md5.update(v[:2048])
 
-        entry_dir = os.path.join(tool_dir, md5.hexdigest())
+        entry_dir = os.path.join(time_dir, md5.hexdigest())
         if not os.path.exists(entry_dir):
             os.mkdir(entry_dir)
         
@@ -291,6 +296,7 @@ class GitLog(object):
         for host_dir in os.listdir(self.repo_path):
             if host_dir == ".git":
                 continue
+            # TODO: Make this more pythonic/DRY
             host_path = os.path.join(self.repo_path, host_dir)
             if not os.path.isdir(host_path):
                 continue
@@ -298,11 +304,13 @@ class GitLog(object):
                 tool_path = os.path.join(host_path, tool_dir)
                 if not os.path.isdir(tool_path):
                     continue
-                for entry_dir in os.listdir(tool_path):
-                    entry_path = os.path.join(tool_path, entry_dir)
-                    entry = load_entry(entry_path)
-                    entry.__dict__['tool'] = tool_dir
-                    yield entry
+                for time_dir in os.listdir(tool_path):
+                    time_path = os.path.join(tool_path, time_dir)
+                    for entry_dir in os.listdir(time_path):
+                        entry_path = os.path.join(time_path, entry_dir)
+                        entry = load_entry(entry_path)
+                        entry.__dict__['tool'] = tool_dir
+                        yield entry
 
     def whoami(self):
         return subprocess.check_output(["git", "config", "user.name"], 
