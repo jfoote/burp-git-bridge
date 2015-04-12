@@ -145,7 +145,7 @@ class Log():
                 url=str(scanIssue.getUrl()))
 
         self.gui_log.add_entry(entry)
-        # TODO: self.git_log.add_scanner_entry(entry)
+        self.git_log.add_scanner_entry(entry)
 
 class GuiLog(AbstractTableModel):
     '''
@@ -282,15 +282,82 @@ class GitLog(object):
                 cwd=self.repo_path)
 
 
+    def add_scanner_entry(self, entry):
+
+        def log_entry(entry, entry_dir):
+            '''
+            Stores entry to entry_dir and adds it to git repo
+            '''
+            if not os.path.exists(entry_dir):
+                os.mkdir(entry_dir)
+            for filename, data in entry.__dict__.iteritems():
+                if data:
+                    if not getattr(data, "__getitem__", False):
+                        data = str(data)
+                    path = os.path.join(entry_dir, filename)
+                    with open(path, "wb") as fp:
+                        fp.write(data)
+                        fp.flush()
+                        fp.close()
+                    subprocess.check_call(["git", "add", path], 
+                            cwd=self.repo_path)
+
+
+        # Create dir hierarchy for this issue
+        # TODO: Make this more pythonic/DRY
+
+        host_dir = os.path.join(self.repo_path, entry.host)
+        if not os.path.exists(host_dir):
+            os.mkdir(host_dir)
+
+        tool_dir = os.path.join(host_dir, "scanner")
+        if not os.path.exists(tool_dir):
+            os.mkdir(tool_dir)
+
+        time_dir = os.path.join(tool_dir, entry.timestamp.replace(":", "."))
+        if not os.path.exists(time_dir):
+            os.mkdir(time_dir)
+
+        md5 = hashlib.md5()
+        for k, v in entry.__dict__.iteritems():
+            if v and k != "messages": 
+                if not getattr(v, "__getitem__", False):
+                    v = str(v)
+                md5.update(k)
+                md5.update(v[:2048])
+
+        entry_dir = os.path.join(time_dir, md5.hexdigest())
+
+
+        # Log this entry; store messages in 'messages' subdir
+
+        messages = entry.messages
+        del entry.__dict__["messages"]
+        log_entry(entry, entry_dir)
+        messages_dir = os.path.join(entry_dir, "messages")
+        if not os.path.exists(messages_dir):
+            os.mkdir(messages_dir)
+        for message in messages:
+            log_entry(message, messages_dir)
+
+        subprocess.check_call(["git", "commit", "-m", "Added scanner entry"], 
+                cwd=self.repo_path)
+
+
     def entries(self):
+        '''
+        Generator; yields each entry in repo
+        '''
 
         def load_entry(entry_path):
             entry = LogEntry()
             for filename in os.listdir(entry_path):
                 file_path = os.path.join(entry_path, filename)
                 if os.path.isdir(file_path):
-                    continue
-                entry.__dict__[filename] = open(file_path, "rb").read()
+                    sub_entry = load_entry(file_path)
+                    entry.__dict__[filename] = sub_entry
+                else:
+                    entry.__dict__[filename] = open(file_path, "rb").read()
             return entry
 
         for host_dir in os.listdir(self.repo_path):
@@ -306,8 +373,12 @@ class GitLog(object):
                     continue
                 for time_dir in os.listdir(tool_path):
                     time_path = os.path.join(tool_path, time_dir)
+                    if not os.path.isdir(time_path):
+                        continue
                     for entry_dir in os.listdir(time_path):
                         entry_path = os.path.join(time_path, entry_dir)
+                        if not os.path.isdir(entry_path):
+                            continue
                         entry = load_entry(entry_path)
                         entry.__dict__['tool'] = tool_dir
                         yield entry
