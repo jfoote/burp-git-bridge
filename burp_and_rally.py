@@ -48,6 +48,17 @@ class LogEntry(object):
     def __init__(self, *args, **kwargs):
         self.__dict__ = kwargs
 
+        md5 = hashlib.md5()
+        for k, v in self.__dict__.iteritems():
+            if v and k != "messages": 
+                if not getattr(v, "__getitem__", False):
+                    v = str(v)
+                md5.update(k)
+                md5.update(v[:2048])
+        self.md5 = md5
+
+
+
 class LogHttpService():
     def __init__(self, host, port, protocol):
         self.host = host
@@ -120,7 +131,8 @@ class Log():
                     comment=message.getComment(),
                     highlight=message.getHighlight(),
                     request=message.getRequest(),
-                    response=message.getResponse())
+                    response=message.getResponse(),
+                    timestamp=timestamp)
             messages.append(msg_entry)
 
 
@@ -237,35 +249,23 @@ class GitLog(object):
     def add_repeater_entry(self, entry):
 
         # Make directory for this entry
-        # TODO: make this pythonic/DRY
 
-        host_dir = os.path.join(self.repo_path, entry.host)
-        if not os.path.exists(host_dir):
-            os.mkdir(host_dir)
-
-        tool_dir = os.path.join(host_dir, "repeater")
-        if not os.path.exists(tool_dir):
-            os.mkdir(tool_dir)
-
-        time_dir = os.path.join(tool_dir, entry.timestamp.replace(":", "."))
-        if not os.path.exists(time_dir):
-            os.mkdir(time_dir)
-
-        md5 = hashlib.md5()
-        for k, v in entry.__dict__.iteritems():
-            if v: 
-                if not getattr(v, "__getitem__", False):
-                    v = str(v)
-                md5.update(k)
-                md5.update(v[:2048])
-
-        entry_dir = os.path.join(time_dir, md5.hexdigest())
+        entry_dir = os.path.join(self.repo_path, entry.md5.hexdigest())
         if not os.path.exists(entry_dir):
             os.mkdir(entry_dir)
         
+        # Add and commit repeater data to git repo
 
-        # Add repeater data to git repo
+        self.write_entry(entry, entry_dir)
+        subprocess.check_call(["git", "commit", "-m", "Added Repeater entry"], 
+                cwd=self.repo_path)
 
+    def write_entry(self, entry, entry_dir):
+        '''
+        Stores entry to entry_dir and adds it to git repo
+        '''
+        if not os.path.exists(entry_dir):
+            os.mkdir(entry_dir)
         for filename, data in entry.__dict__.iteritems():
             if data:
                 if not getattr(data, "__getitem__", False):
@@ -278,67 +278,25 @@ class GitLog(object):
                 subprocess.check_call(["git", "add", path], 
                         cwd=self.repo_path)
 
-        subprocess.check_call(["git", "commit", "-m", "Added Repeater entry"], 
-                cwd=self.repo_path)
-
 
     def add_scanner_entry(self, entry):
 
-        def log_entry(entry, entry_dir):
-            '''
-            Stores entry to entry_dir and adds it to git repo
-            '''
-            if not os.path.exists(entry_dir):
-                os.mkdir(entry_dir)
-            for filename, data in entry.__dict__.iteritems():
-                if data:
-                    if not getattr(data, "__getitem__", False):
-                        data = str(data)
-                    path = os.path.join(entry_dir, filename)
-                    with open(path, "wb") as fp:
-                        fp.write(data)
-                        fp.flush()
-                        fp.close()
-                    subprocess.check_call(["git", "add", path], 
-                            cwd=self.repo_path)
-
 
         # Create dir hierarchy for this issue
-        # TODO: Make this more pythonic/DRY
 
-        host_dir = os.path.join(self.repo_path, entry.host)
-        if not os.path.exists(host_dir):
-            os.mkdir(host_dir)
-
-        tool_dir = os.path.join(host_dir, "scanner")
-        if not os.path.exists(tool_dir):
-            os.mkdir(tool_dir)
-
-        time_dir = os.path.join(tool_dir, entry.timestamp.replace(":", "."))
-        if not os.path.exists(time_dir):
-            os.mkdir(time_dir)
-
-        md5 = hashlib.md5()
-        for k, v in entry.__dict__.iteritems():
-            if v and k != "messages": 
-                if not getattr(v, "__getitem__", False):
-                    v = str(v)
-                md5.update(k)
-                md5.update(v[:2048])
-
-        entry_dir = os.path.join(time_dir, md5.hexdigest())
+        entry_dir = os.path.join(self.repo_path, entry.md5.hexdigest())
 
 
-        # Log this entry; store messages in 'messages' subdir
+        # Log this entry; log 'messages' to its own subdir 
 
         messages = entry.messages
         del entry.__dict__["messages"]
-        log_entry(entry, entry_dir)
+        self.write_entry(entry, entry_dir)
         messages_dir = os.path.join(entry_dir, "messages")
         if not os.path.exists(messages_dir):
             os.mkdir(messages_dir)
         for message in messages:
-            log_entry(message, messages_dir)
+            self.write_entry(message, messages_dir)
 
         subprocess.check_call(["git", "commit", "-m", "Added scanner entry"], 
                 cwd=self.repo_path)
@@ -348,7 +306,6 @@ class GitLog(object):
         '''
         Generator; yields each entry in repo
         '''
-
         def load_entry(entry_path):
             entry = LogEntry()
             for filename in os.listdir(entry_path):
@@ -360,28 +317,14 @@ class GitLog(object):
                     entry.__dict__[filename] = open(file_path, "rb").read()
             return entry
 
-        for host_dir in os.listdir(self.repo_path):
-            if host_dir == ".git":
+        for entry_dir in os.listdir(self.repo_path):
+            if entry_dir == ".git":
                 continue
-            # TODO: Make this more pythonic/DRY
-            host_path = os.path.join(self.repo_path, host_dir)
-            if not os.path.isdir(host_path):
+            entry_path = os.path.join(self.repo_path, entry_dir)
+            if not os.path.isdir(entry_path):
                 continue
-            for tool_dir in os.listdir(host_path):
-                tool_path = os.path.join(host_path, tool_dir)
-                if not os.path.isdir(tool_path):
-                    continue
-                for time_dir in os.listdir(tool_path):
-                    time_path = os.path.join(tool_path, time_dir)
-                    if not os.path.isdir(time_path):
-                        continue
-                    for entry_dir in os.listdir(time_path):
-                        entry_path = os.path.join(time_path, entry_dir)
-                        if not os.path.isdir(entry_path):
-                            continue
-                        entry = load_entry(entry_path)
-                        entry.__dict__['tool'] = tool_dir
-                        yield entry
+            entry = load_entry(entry_path)
+            yield entry
 
     def whoami(self):
         return subprocess.check_output(["git", "config", "user.name"], 
@@ -505,7 +448,7 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
         if getattr(log_entry, "response", False):
             self.addTab("Response", self._responseViewer.getComponent())
             self._responseViewer.setMessage(log_entry.response, False)
-        self.addTab("Send to Tools", self.sendPanel)
+        self.addTab("Repo Entry Commands", self.sendPanel)
         self._currentlyDisplayedItem = log_entry
         
     '''
@@ -530,9 +473,9 @@ class UiTopPane(JTabbedPane):
     def __init__(self, callbacks, bottom_pane, log):
         self.logTable = UiLogTable(callbacks, bottom_pane, log.gui_log)
         scrollPane = JScrollPane(self.logTable)
-        self.addTab("Notes", scrollPane)
+        self.addTab("Repo", scrollPane)
         options = OptionsPanel(log)
-        self.addTab("Configuration", options)
+        self.addTab("Repo Commands", options)
         callbacks.customizeUiComponent(self)
 
 class UiLogTable(JTable):
