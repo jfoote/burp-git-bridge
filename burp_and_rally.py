@@ -4,7 +4,7 @@ from java.awt.event import ActionListener
 from java.io import PrintWriter
 from java.util import ArrayList, List
 from java.net import URL
-from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, SwingUtilities, JPanel, JButton, JLabel, JMenuItem
+from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, SwingUtilities, JPanel, JButton, JLabel, JMenuItem, BoxLayout
 from javax.swing.table import AbstractTableModel
 from threading import Lock
 import datetime, os, hashlib
@@ -519,6 +519,7 @@ class UiTopPane(JTabbedPane):
     '''
     def __init__(self, callbacks, bottom_pane, log):
         self.logTable = UiLogTable(callbacks, bottom_pane, log.gui_log)
+        # TODO: set column width and add sorting
         scrollPane = JScrollPane(self.logTable)
         self.addTab("Repo", scrollPane)
         callbacks.customizeUiComponent(self)
@@ -556,20 +557,21 @@ class CommandPanel(JPanel, ActionListener):
         self.log = log
         self.log_table = None # to be set by caller
 
-        label = JLabel("Reload UI from Git Repo")
+        self.setLayout(BoxLayout(self, BoxLayout.PAGE_AXIS))
+
+        label = JLabel("Reload UI from Git Repo:")
         button = JButton("Reload")
         button.addActionListener(CommandPanel.ReloadAction(log))
         self.add(label)
         self.add(button)
-        # TODO: add line break 
 
-        label = JLabel("Send selected entries to respective burp tools")
+        label = JLabel("Send selected entries to respective burp tools:")
         button = JButton("Send")
         button.addActionListener(CommandPanel.SendAction(self))
         self.add(label)
         self.add(button)
 
-        label = JLabel("Remove selected entries from repo")
+        label = JLabel("Remove selected entries from repo:")
         button = JButton("Remove")
         button.addActionListener(CommandPanel.RemoveAction(self, log))
         self.add(label)
@@ -607,7 +609,6 @@ class CommandPanel(JPanel, ActionListener):
         def actionPerformed(self, event):
             for entry in self.panel.log_table.getSelectedEntries():
                 self.log.remove(entry)
-                # TODO: implement deletion
 
 
 '''
