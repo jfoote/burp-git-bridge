@@ -432,8 +432,8 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
     whatever is selected in the top pane.
     '''
     def __init__(self, callbacks, log):
-        self.sendPanel = SendPanel(callbacks, log)
-        self.addTab("Chorus Commands", self.sendPanel)
+        self.commandPanel = CommandPanel(callbacks, log)
+        self.addTab("Chorus Commands", self.commandPanel)
         self._requestViewer = callbacks.createMessageEditor(self, False)
         self._responseViewer = callbacks.createMessageEditor(self, False)
         self._issueViewer = callbacks.createMessageEditor(self, False)
@@ -444,7 +444,7 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
         Passes the Log table to the "Send to Tools" component so it can grab
         the selected rows
         '''
-        self.sendPanel.log_table = log_table
+        self.commandPanel.log_table = log_table
 
     def show_log_entry(self, log_entry):
         '''
@@ -461,7 +461,7 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
             self.addTab("Issue Summary", self._issueViewer.getComponent())
             self._issueViewer.setMessage(self.getScanIssueSummary(log_entry), 
                     False)
-        self.addTab("Chorus Commands", self.sendPanel)
+        self.addTab("Chorus Commands", self.commandPanel)
         self._currentlyDisplayedItem = log_entry
 
     def getScanIssueSummary(self, log_entry):
@@ -524,7 +524,7 @@ class UiLogTable(JTable):
         JTable.changeSelection(self, row, col, toggle, extend)
         self.bottom_pane.show_log_entry(self.gui_log.get(row))
 
-class SendPanel(JPanel, ActionListener):
+class CommandPanel(JPanel, ActionListener):
     def __init__(self, callbacks, log):
         self.callbacks = callbacks
         self.log = log
@@ -532,14 +532,20 @@ class SendPanel(JPanel, ActionListener):
 
         label = JLabel("Reload UI from Git Repo")
         button = JButton("Reload")
-        button.addActionListener(SendPanel.ReloadAction(log))
+        button.addActionListener(CommandPanel.ReloadAction(log))
         self.add(label)
         self.add(button)
         # TODO: add line break 
 
-        label = JLabel("Send selected results to respective burp tools:")
+        label = JLabel("Send selected entries to respective burp tools")
         button = JButton("Send")
-        button.addActionListener(SendPanel.SendAction(self))
+        button.addActionListener(CommandPanel.SendAction(self))
+        self.add(label)
+        self.add(button)
+
+        label = JLabel("Remove selected entries from repo")
+        button = JButton("Remove")
+        button.addActionListener(CommandPanel.RemoveAction(self, log))
         self.add(label)
         self.add(button)
 
@@ -566,6 +572,16 @@ class SendPanel(JPanel, ActionListener):
                 elif entry.tool == "scanner":
                     issue = BurpLogScanIssue(entry)
                     self.panel.callbacks.addScanIssue(issue)
+
+    class RemoveAction(ActionListener):
+        def __init__(self, panel, log):
+            self.panel = panel
+            self.log = log
+
+        def actionPerformed(self, event):
+            for entry in self.panel.log_table.getSelectedEntries():
+                # TODO: implement deletion
+                pass
 
 
 '''
