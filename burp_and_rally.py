@@ -185,7 +185,7 @@ class GuiLog(AbstractTableModel):
             return 0
     
     def getColumnCount(self):
-        return 4
+        return 5
     
     def getColumnName(self, columnIndex):
         cols = ["Time added", 
@@ -352,7 +352,7 @@ class BurpUi(ITab):
         # Create split pane with top and bottom panes
 
         self._splitpane = JSplitPane(JSplitPane.VERTICAL_SPLIT)
-        self.bottom_pane = UiBottomPane(callbacks)
+        self.bottom_pane = UiBottomPane(callbacks, log)
         self.top_pane = UiTopPane(callbacks, self.bottom_pane, log)
         self.bottom_pane.setLogTable(self.top_pane.logTable)
         self._splitpane.setLeftComponent(self.top_pane)
@@ -431,10 +431,12 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
     The bottom pane in the this extension's UI tab. It shows detail of 
     whatever is selected in the top pane.
     '''
-    def __init__(self, callbacks):
-        self.sendPanel = SendPanel(callbacks)
+    def __init__(self, callbacks, log):
+        self.sendPanel = SendPanel(callbacks, log)
+        self.addTab("Chorus Commands", self.sendPanel)
         self._requestViewer = callbacks.createMessageEditor(self, False)
         self._responseViewer = callbacks.createMessageEditor(self, False)
+        self._issueViewer = callbacks.createMessageEditor(self, False)
         callbacks.customizeUiComponent(self)
 
     def setLogTable(self, log_table):
@@ -455,8 +457,20 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
         if getattr(log_entry, "response", False):
             self.addTab("Response", self._responseViewer.getComponent())
             self._responseViewer.setMessage(log_entry.response, False)
-        self.addTab("Repo Entry Commands", self.sendPanel)
+        if log_entry.tool == "scanner":
+            self.addTab("Issue Summary", self._issueViewer.getComponent())
+            self._issueViewer.setMessage(self.getScanIssueSummary(log_entry), 
+                    False)
+        self.addTab("Chorus Commands", self.sendPanel)
         self._currentlyDisplayedItem = log_entry
+
+    def getScanIssueSummary(self, log_entry):
+        out = []
+        for key, val in sorted(log_entry.__dict__.items()):
+            if key in ["messages", "tool", "md5"]:
+                continue
+            out.append("%s: %s" % (key, val))
+        return "\n\n".join(out)
         
     '''
     The three methods below implement IMessageEditorController st. requests 
@@ -481,8 +495,6 @@ class UiTopPane(JTabbedPane):
         self.logTable = UiLogTable(callbacks, bottom_pane, log.gui_log)
         scrollPane = JScrollPane(self.logTable)
         self.addTab("Repo", scrollPane)
-        options = OptionsPanel(log)
-        self.addTab("Repo Commands", options)
         callbacks.customizeUiComponent(self)
 
 class UiLogTable(JTable):
@@ -512,38 +524,48 @@ class UiLogTable(JTable):
         JTable.changeSelection(self, row, col, toggle, extend)
         self.bottom_pane.show_log_entry(self.gui_log.get(row))
 
-class OptionsPanel(JPanel):
-    def __init__(self, log):
-        reloadButton = JButton("Reload UI from git repo")
-        reloadButton.addActionListener(ReloadAction(log))
-        self.add(reloadButton)
-
-class ReloadAction(ActionListener):
-    def __init__(self, log):
-        self.log = log
-
-    def actionPerformed(self, event):
-        self.log.reload()
-
 class SendPanel(JPanel, ActionListener):
-    def __init__(self, callbacks):
+    def __init__(self, callbacks, log):
         self.callbacks = callbacks
-        label = JLabel("Send selected results to respective burp tools:")
-        sendButton = JButton("Send")
-        sendButton.addActionListener(self)
-        self.add(label)
-        self.add(sendButton)
+        self.log = log
         self.log_table = None # to be set by caller
 
-    def actionPerformed(self, actionEvent):
-        for entry in self.log_table.getSelectedEntries():
-            if entry.tool == "repeater":
-                https = (entry.protocol == "https")
-                self.callbacks.sendToRepeater(entry.host, int(entry.port), 
-                        https, entry.request, entry.timestamp)
-            elif entry.tool == "scanner":
-                issue = BurpLogScanIssue(entry)
-                self.callbacks.addScanIssue(issue)
+        label = JLabel("Reload UI from Git Repo")
+        button = JButton("Reload")
+        button.addActionListener(SendPanel.ReloadAction(log))
+        self.add(label)
+        self.add(button)
+        # TODO: add line break 
+
+        label = JLabel("Send selected results to respective burp tools:")
+        button = JButton("Send")
+        button.addActionListener(SendPanel.SendAction(self))
+        self.add(label)
+        self.add(button)
+
+        # TODO: maybe add a git command box
+
+    class ReloadAction(ActionListener):
+        def __init__(self, log):
+            self.log = log
+    
+        def actionPerformed(self, event):
+            self.log.reload()
+
+    class SendAction(ActionListener):
+        def __init__(self, panel):
+            self.panel = panel
+
+        def actionPerformed(self, actionEvent):
+            for entry in self.panel.log_table.getSelectedEntries():
+                if entry.tool == "repeater":
+                    https = (entry.protocol == "https")
+                    self.panel.callbacks.sendToRepeater(entry.host, 
+                            int(entry.port), https, entry.request, 
+                            entry.timestamp)
+                elif entry.tool == "scanner":
+                    issue = BurpLogScanIssue(entry)
+                    self.panel.callbacks.addScanIssue(issue)
 
 
 '''
