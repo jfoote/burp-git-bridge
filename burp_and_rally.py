@@ -32,6 +32,7 @@ class BurpExtender(IBurpExtender, IHttpListener):
         self.log = Log(callbacks)
         self.ui = BurpUi(callbacks, self.log)
         self.log.setUi(self.ui)
+        self.log.reload()
        
         callbacks.registerHttpListener(self)
 
@@ -57,7 +58,7 @@ class LogEntry(object):
                     v = str(v)
                 md5.update(k)
                 md5.update(v[:2048])
-        self.md5 = md5
+        self.md5 = md5.hexdigest()
 
 
 
@@ -146,6 +147,12 @@ class Log():
         self.gui_log.add_entry(entry)
         self.git_log.add_scanner_entry(entry)
 
+    def remove(self, entry):
+        self.git_log.remove(entry)
+        #self.gui_log.remove_entry(entry) 
+        self.reload() # TODO: replace this with the above call once it is finished
+
+
 class GuiLog(AbstractTableModel):
     '''
     Log of burp activity: commands handles both the Burp UI log and the git 
@@ -177,6 +184,17 @@ class GuiLog(AbstractTableModel):
         # Note: if callees modify table this could deadlock
         self.fireTableRowsInserted(row, row)
         self._lock.release()
+
+    def remove_entry(self, entry):
+        self._lock.acquire()
+        for i in range(0, len(self._log)):
+            ei = self._log[i] # TODO: OK?
+            if ei.md5 == entry.md5:
+                self._log.remove(i) # TODO: correct?
+                break
+        self.fireTableRowsDeleted(i, i) # TODO: correct?
+        self._lock.release()
+        # TODO: check/fix this once i access to network/docs
 
     def getRowCount(self):
         try:
@@ -237,7 +255,7 @@ class GitLog(object):
 
         # Make directory for this entry
 
-        entry_dir = os.path.join(self.repo_path, entry.md5.hexdigest())
+        entry_dir = os.path.join(self.repo_path, entry.md5)
         if not os.path.exists(entry_dir):
             os.mkdir(entry_dir)
         
@@ -246,6 +264,36 @@ class GitLog(object):
         self.write_entry(entry, entry_dir)
         subprocess.check_call(["git", "commit", "-m", "Added Repeater entry"], 
                 cwd=self.repo_path)
+
+    def add_scanner_entry(self, entry):
+
+        # Create dir hierarchy for this issue
+
+        entry_dir = os.path.join(self.repo_path, entry.md5)
+
+
+        # Log this entry; log 'messages' to its own subdir 
+
+        messages = entry.messages
+        del entry.__dict__["messages"]
+        self.write_entry(entry, entry_dir)
+        messages_dir = os.path.join(entry_dir, "messages")
+        if not os.path.exists(messages_dir):
+            os.mkdir(messages_dir)
+            lpath = os.path.join(messages_dir, ".chorus-list")
+            open(lpath, "wt")
+            subprocess.check_call(["git", "add", lpath], cwd=self.repo_path)
+        i = 0
+        for message in messages:
+            message_dir = os.path.join(messages_dir, str(i))
+            if not os.path.exists(message_dir):
+                os.mkdir(message_dir)
+            self.write_entry(message, message_dir)
+            i += 1
+
+        subprocess.check_call(["git", "commit", "-m", "Added scanner entry"], 
+                cwd=self.repo_path)
+
 
     def write_entry(self, entry, entry_dir):
         '''
@@ -265,34 +313,6 @@ class GitLog(object):
                 fp.close()
             subprocess.check_call(["git", "add", path], 
                     cwd=self.repo_path)
-
-
-    def add_scanner_entry(self, entry):
-
-        # Create dir hierarchy for this issue
-
-        entry_dir = os.path.join(self.repo_path, entry.md5.hexdigest())
-
-
-        # Log this entry; log 'messages' to its own subdir 
-
-        messages = entry.messages
-        del entry.__dict__["messages"]
-        self.write_entry(entry, entry_dir)
-        messages_dir = os.path.join(entry_dir, "messages")
-        if not os.path.exists(messages_dir):
-            os.mkdir(messages_dir)
-            open(os.path.join(messages_dir, ".chorus-list"), "wt")
-        i = 0
-        for message in messages:
-            message_dir = os.path.join(messages_dir, str(i))
-            if not os.path.exists(message_dir):
-                os.mkdir(message_dir)
-            self.write_entry(message, message_dir)
-            i += 1
-
-        subprocess.check_call(["git", "commit", "-m", "Added scanner entry"], 
-                cwd=self.repo_path)
 
 
     def entries(self):
@@ -331,9 +351,17 @@ class GitLog(object):
             entry = load_entry(entry_path)
             yield entry
 
+
     def whoami(self):
         return subprocess.check_output(["git", "config", "user.name"], 
                 cwd=self.repo_path)
+
+    def remove(self, entry):
+        entry_path = os.path.join(self.repo_path, entry.md5)
+        subprocess.check_output(["git", "rm", "-rf", entry_path], 
+           cwd=self.repo_path)
+        subprocess.check_call(["git", "commit", "-m", "Removed entry at %s" % 
+            entry_path], cwd=self.repo_path)
 
 
 
@@ -384,8 +412,6 @@ class RightClickHandler(IContextMenuFactory):
         self.log = log
 
     def createMenuItems(self, invocation):
-        import sys
-        sys.stdout.write("invoked\n")
         context = invocation.getInvocationContext()
         tool = invocation.getToolFlag()
         if tool == self.callbacks.TOOL_REPEATER:
@@ -580,8 +606,8 @@ class CommandPanel(JPanel, ActionListener):
 
         def actionPerformed(self, event):
             for entry in self.panel.log_table.getSelectedEntries():
+                self.log.remove(entry)
                 # TODO: implement deletion
-                pass
 
 
 '''
