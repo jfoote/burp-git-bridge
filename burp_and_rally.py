@@ -3,6 +3,7 @@ from java.awt import Component
 from java.awt.event import ActionListener
 from java.io import PrintWriter
 from java.util import ArrayList, List
+from java.net import URL
 from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, SwingUtilities, JPanel, JButton, JLabel, JMenuItem
 from javax.swing.table import AbstractTableModel
 from threading import Lock
@@ -41,7 +42,8 @@ class BurpExtender(IBurpExtender, IHttpListener):
        
 
 '''
-Logging functionality.
+Classes that support logging of data to in-Burp extension UI as well
+as the underlying git repo
 '''
 
 class LogEntry(object):
@@ -57,49 +59,6 @@ class LogEntry(object):
                 md5.update(v[:2048])
         self.md5 = md5
 
-
-
-class LogHttpService():
-    def __init__(self, host, port, protocol):
-        self.host = host
-        self.port = port
-        self.protocol = protocol
-
-    def getHost(self):
-        return self.host
-
-    def getPort(self):
-        return self.port
-
-    def getProtocol(self):
-        return self.protocol
-
-class BurpLogEntry():
-    def __init__(self, entry):
-        '''
-        Define getter methods for each attr in entry
-        '''
-
-        from functools import partial
-        for key, val in entry.__dict__.iteritems():
-            funcname = "get" + "".join([w.capitalize() for w in key.split("_")])
-            setattr(self, funcname, partial(entry.__dict__.get, key))
-
-class BurpLogHttpService(BurpLogEntry, IHttpService):
-    pass
-
-class BurpLogHttpRequestResponse(BurpLogEntry, IHttpRequestResponse):
-    pass
-
-from copy import deepcopy
-class BurpLogScanIssue(BurpLogEntry, IScanIssue):
-    def __init__(self, entry):
-        #entry = deepcopy(entry)
-        service_entry = BurpLogHttpService(LogEntry(host=entry.host, port=entry, 
-                protocol=entry.protocol))
-        entry.http_service = BurpLogEntry(service_entry)
-        entry.http_messages = [BurpLogHttpRequestResponse(m) for m in entry.messages]
-        BurpLogEntry.__init__(self, entry)
 
 
 class Log():
@@ -295,16 +254,17 @@ class GitLog(object):
         if not os.path.exists(entry_dir):
             os.mkdir(entry_dir)
         for filename, data in entry.__dict__.iteritems():
-            if data:
-                if not getattr(data, "__getitem__", False):
-                    data = str(data)
-                path = os.path.join(entry_dir, filename)
-                with open(path, "wb") as fp:
-                    fp.write(data)
-                    fp.flush()
-                    fp.close()
-                subprocess.check_call(["git", "add", path], 
-                        cwd=self.repo_path)
+            if not data:
+                data = ""
+            if not getattr(data, "__getitem__", False):
+                data = str(data)
+            path = os.path.join(entry_dir, filename)
+            with open(path, "wb") as fp:
+                fp.write(data)
+                fp.flush()
+                fp.close()
+            subprocess.check_call(["git", "add", path], 
+                    cwd=self.repo_path)
 
 
     def add_scanner_entry(self, entry):
@@ -376,9 +336,11 @@ class GitLog(object):
                 cwd=self.repo_path)
 
 
+
 '''
 Implementation of extension's UI.
 '''
+
 class BurpUi(ITab):
     '''
     The collection of objects that make up this extension's Burp UI. Created
@@ -581,8 +543,74 @@ class SendPanel(JPanel, ActionListener):
                         https, entry.request, entry.timestamp)
             elif entry.tool == "scanner":
                 issue = BurpLogScanIssue(entry)
-                import pdb; pdb.set_trace()
                 self.callbacks.addScanIssue(issue)
-                 
 
-# TODO: Finish "LogScanIssue" to support sending scan results back to Scanner, then proceed
+
+'''
+Burp Interoperability Class Definitions
+'''
+
+class BurpLogHttpService(IHttpService):
+    def __init__(self, host, port, protocol):
+        self._host = host
+        self._port = port
+        self._protocol = protocol
+
+    def getHost(self):
+        return self._host
+
+    def getPort(self):
+        return int(self._port)
+
+    def getProtocol(self):
+        return self._protocol
+
+class BurpLogHttpRequestResponse(IHttpRequestResponse):
+    def __init__(self, entry):
+        self.entry = entry
+
+    def getRequest(self):
+        return self.entry.request
+    def getResponse(self):
+        return self.entry.response
+    def getHttpService(self):
+        return BurpLogHttpService(self.entry.host,
+                self.entry.port, self.entry.protocol)
+
+
+class BurpLogScanIssue(IScanIssue):
+    '''
+    Passed to addScanItem
+    Note that a pythonic solution that dynamically creates method based on 
+    LogEntry attributes via functools.partial will not work here as the 
+    interface classes supplied by Burp (IScanIssue, etc.) include read-only
+    attributes corresponding to strings that would be used by such a solution.
+    '''
+    def __init__(self, entry):
+        self.entry = entry
+        self.messages = [BurpLogHttpRequestResponse(m) for m in self.entry.messages]
+        self.service = BurpLogHttpService(self.entry.host, self.entry.port, self.entry.protocol)
+
+    def getHttpMessages(self):
+        return self.messages
+    def getHttpService(self):
+        return self.service
+
+    def getConfidence(self):
+        return self.entry.confidence
+    def getIssueBackground(self):
+        return self.entry.issue_background
+    def getIssueDetail(self):
+        return self.entry.issue_detail
+    def getIssueName(self):
+        return self.entry.issue_name
+    def getIssueType(self):
+        return self.entry.issue_type
+    def getRemediationDetail(self):
+        return self.entry.remediation_detail
+    def getSeverity(self):
+        return self.entry.severity
+    def getUrl(self):
+        return URL(self.entry.url)
+
+
