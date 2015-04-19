@@ -1,4 +1,4 @@
-from burp import IBurpExtender, ITab, IHttpListener, IMessageEditorController, IContextMenuFactory
+from burp import IBurpExtender, ITab, IHttpListener, IMessageEditorController, IContextMenuFactory, IScanIssue, IHttpService, IHttpRequestResponse
 from java.awt import Component
 from java.awt.event import ActionListener
 from java.io import PrintWriter
@@ -73,6 +73,34 @@ class LogHttpService():
 
     def getProtocol(self):
         return self.protocol
+
+class BurpLogEntry():
+    def __init__(self, entry):
+        '''
+        Define getter methods for each attr in entry
+        '''
+
+        from functools import partial
+        for key, val in entry.__dict__.iteritems():
+            funcname = "get" + "".join([w.capitalize() for w in key.split("_")])
+            setattr(self, funcname, partial(entry.__dict__.get, key))
+
+class BurpLogHttpService(BurpLogEntry, IHttpService):
+    pass
+
+class BurpLogHttpRequestResponse(BurpLogEntry, IHttpRequestResponse):
+    pass
+
+from copy import deepcopy
+class BurpLogScanIssue(BurpLogEntry, IScanIssue):
+    def __init__(self, entry):
+        #entry = deepcopy(entry)
+        service_entry = BurpLogHttpService(LogEntry(host=entry.host, port=entry, 
+                protocol=entry.protocol))
+        entry.http_service = BurpLogEntry(service_entry)
+        entry.http_messages = [BurpLogHttpRequestResponse(m) for m in entry.messages]
+        BurpLogEntry.__init__(self, entry)
+
 
 class Log():
     '''
@@ -281,7 +309,6 @@ class GitLog(object):
 
     def add_scanner_entry(self, entry):
 
-
         # Create dir hierarchy for this issue
 
         entry_dir = os.path.join(self.repo_path, entry.md5.hexdigest())
@@ -295,8 +322,14 @@ class GitLog(object):
         messages_dir = os.path.join(entry_dir, "messages")
         if not os.path.exists(messages_dir):
             os.mkdir(messages_dir)
+            open(os.path.join(messages_dir, ".chorus-list"), "wt")
+        i = 0
         for message in messages:
-            self.write_entry(message, messages_dir)
+            message_dir = os.path.join(messages_dir, str(i))
+            if not os.path.exists(message_dir):
+                os.mkdir(message_dir)
+            self.write_entry(message, message_dir)
+            i += 1
 
         subprocess.check_call(["git", "commit", "-m", "Added scanner entry"], 
                 cwd=self.repo_path)
@@ -307,8 +340,11 @@ class GitLog(object):
         Generator; yields each entry in repo
         '''
         def load_entry(entry_path):
+            filenames = os.listdir(entry_path)
+            if ".chorus-list" in filenames:
+                return load_list(entry_path)
             entry = LogEntry()
-            for filename in os.listdir(entry_path):
+            for filename in filenames:
                 file_path = os.path.join(entry_path, filename)
                 if os.path.isdir(file_path):
                     sub_entry = load_entry(file_path)
@@ -316,6 +352,15 @@ class GitLog(object):
                 else:
                     entry.__dict__[filename] = open(file_path, "rb").read()
             return entry
+
+        def load_list(entry_path):
+            entries = []
+            for filename in os.listdir(entry_path):
+                file_path = os.path.join(entry_path, filename)
+                if filename == ".chorus-list":
+                    continue
+                entries.append(load_entry(file_path))
+            return entries
 
         for entry_dir in os.listdir(self.repo_path):
             if entry_dir == ".git":
@@ -531,8 +576,13 @@ class SendPanel(JPanel, ActionListener):
     def actionPerformed(self, actionEvent):
         for entry in self.log_table.getSelectedEntries():
             if entry.tool == "repeater":
-                https = False
-                if entry.protocol == "https":
-                    https = True
+                https = (entry.protocol == "https")
                 self.callbacks.sendToRepeater(entry.host, int(entry.port), 
                         https, entry.request, entry.timestamp)
+            elif entry.tool == "scanner":
+                issue = BurpLogScanIssue(entry)
+                import pdb; pdb.set_trace()
+                self.callbacks.addScanIssue(issue)
+                 
+
+# TODO: Finish "LogScanIssue" to support sending scan results back to Scanner, then proceed
