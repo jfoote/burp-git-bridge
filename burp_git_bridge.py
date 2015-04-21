@@ -675,7 +675,6 @@ class UiTopPane(JTabbedPane):
 
     def __init__(self, callbacks, bottom_pane, log):
         self.logTable = UiLogTable(callbacks, bottom_pane, log.gui_log)
-        # TODO: set column width and add sorting
         scrollPane = JScrollPane(self.logTable)
         self.addTab("Repo", scrollPane)
         callbacks.customizeUiComponent(self)
@@ -690,6 +689,7 @@ class UiLogTable(JTable):
     '''
 
     def __init__(self, callbacks, bottom_pane, gui_log):
+        self.setAutoCreateRowSorter(True)
         self.bottom_pane = bottom_pane
         self._callbacks = callbacks
         self.gui_log = gui_log
