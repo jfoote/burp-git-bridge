@@ -499,6 +499,10 @@ class BurpUi(ITab):
     '''
 
     def __init__(self, callbacks, log):
+        '''
+        Creates GUI objects, registers right-click handlers, and adds the 
+        extension's tab to the Burp UI.
+        '''
 
         # Create split pane with top and bottom panes
 
@@ -530,11 +534,20 @@ class BurpUi(ITab):
         return self._splitpane
 
 class RightClickHandler(IContextMenuFactory):
+    '''
+    Creates menu items for Burp UI right-click menus.
+    '''
+
     def __init__(self, callbacks, log):
         self.callbacks = callbacks
         self.log = log
 
     def createMenuItems(self, invocation):
+        '''
+        Invoked by Burp when a right-click menu is created; adds Git Bridge's 
+        options to the menu.
+        '''
+
         context = invocation.getInvocationContext()
         tool = invocation.getToolFlag()
         if tool == self.callbacks.TOOL_REPEATER:
@@ -556,6 +569,11 @@ class RightClickHandler(IContextMenuFactory):
             pass
 
     class ScannerHandler(ActionListener):
+        '''
+        Handles selection of the 'Send to Git Bridge' menu item when shown 
+        on a Scanner right click menu.
+        '''
+
         def __init__(self, callbacks, invocation, log):
             self.callbacks = callbacks
             self.invocation = invocation
@@ -566,6 +584,11 @@ class RightClickHandler(IContextMenuFactory):
                 self.log.add_scanner_entry(issue) 
 
     class RepeaterHandler(ActionListener):
+        '''
+        Handles selection of the 'Send to Git Bridge' menu item when shown 
+        on a Repeater right click menu.
+        '''
+
         def __init__(self, callbacks, invocation, log):
             self.callbacks = callbacks
             self.invocation = invocation
@@ -580,6 +603,7 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
     The bottom pane in the this extension's UI tab. It shows detail of 
     whatever is selected in the top pane.
     '''
+
     def __init__(self, callbacks, log):
         self.commandPanel = CommandPanel(callbacks, log)
         self.addTab("Git Bridge Commands", self.commandPanel)
@@ -599,7 +623,9 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
         '''
         Shows the log entry in the bottom pane of the UI
         '''
+
         self.removeAll()
+        self.addTab("Git Bridge Commands", self.commandPanel)
         if getattr(log_entry, "request", False):
             self.addTab("Request", self._requestViewer.getComponent())
             self._requestViewer.setMessage(log_entry.request, True)
@@ -610,10 +636,15 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
             self.addTab("Issue Summary", self._issueViewer.getComponent())
             self._issueViewer.setMessage(self.getScanIssueSummary(log_entry), 
                     False)
-        self.addTab("Git Bridge Commands", self.commandPanel)
         self._currentlyDisplayedItem = log_entry
 
     def getScanIssueSummary(self, log_entry):
+        '''
+        A quick hack to generate a plaintext summary of a Scanner issue. 
+        This is shown in the bottom pane of the Git Bridge tab when a Scanner 
+        item is selected.
+        '''
+
         out = []
         for key, val in sorted(log_entry.__dict__.items()):
             if key in ["messages", "tool", "md5"]:
@@ -625,6 +656,7 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
     The three methods below implement IMessageEditorController st. requests 
     and responses are shown in the UI pane
     '''
+
     def getHttpService(self):
         return self._currentlyDisplayedItem.requestResponse.getHttpService()
 
@@ -637,9 +669,10 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
  
 class UiTopPane(JTabbedPane):
     '''
-    The top pane in this extension's UI tab. It shows either the in-burp 
-    version of the Log or an "Options" tab (name TBD).
+    The top pane in this extension's UI tab. It shows the in-Burp version of 
+    the Git Repo.
     '''
+
     def __init__(self, callbacks, bottom_pane, log):
         self.logTable = UiLogTable(callbacks, bottom_pane, log.gui_log)
         # TODO: set column width and add sorting
@@ -655,6 +688,7 @@ class UiLogTable(JTable):
     Note, as a JTable, this stays synchronized with the underlying
     ArrayList. 
     '''
+
     def __init__(self, callbacks, bottom_pane, gui_log):
         self.bottom_pane = bottom_pane
         self._callbacks = callbacks
@@ -675,6 +709,11 @@ class UiLogTable(JTable):
         self.bottom_pane.show_log_entry(self.gui_log.get(row))
 
 class CommandPanel(JPanel, ActionListener):
+    '''
+    This is the "Git Bridge Commands" Panel shown in the bottom of the Git
+    Bridge tab.
+    '''
+
     def __init__(self, callbacks, log):
         self.callbacks = callbacks
         self.log = log
@@ -703,6 +742,10 @@ class CommandPanel(JPanel, ActionListener):
         # TODO: maybe add a git command box
 
     class ReloadAction(ActionListener):
+        '''
+        Handles when the "Reload" button is clicked.
+        '''
+
         def __init__(self, log):
             self.log = log
     
@@ -710,10 +753,19 @@ class CommandPanel(JPanel, ActionListener):
             self.log.reload()
 
     class SendAction(ActionListener):
+        '''
+        Handles when the "Send to Tools" button is clicked.
+        '''
+
         def __init__(self, panel):
             self.panel = panel
 
         def actionPerformed(self, actionEvent):
+            '''
+            Iterates over each entry that is selected in the UI table and 
+            calls the proper Burp "send to" callback with the entry data.
+            '''
+
             for entry in self.panel.log_table.getSelectedEntries():
                 if entry.tool == "repeater":
                     https = (entry.protocol == "https")
@@ -725,11 +777,19 @@ class CommandPanel(JPanel, ActionListener):
                     self.panel.callbacks.addScanIssue(issue)
 
     class RemoveAction(ActionListener):
+        '''
+        Handles when the "Send to Tools" button is clicked.
+        '''
+
         def __init__(self, panel, log):
             self.panel = panel
             self.log = log
 
         def actionPerformed(self, event):
+            '''
+            Iterates over each entry that is selected in the UI table and 
+            removes it from the Log. 
+            '''
             for entry in self.panel.log_table.getSelectedEntries():
                 self.log.remove(entry)
 
@@ -739,6 +799,11 @@ Burp Interoperability Class Definitions
 '''
 
 class BurpLogHttpService(IHttpService):
+    '''
+    Burp expects the object passed to "addScanIssue" to include a member 
+    that implements this interface; that is what this object is used for.
+    '''
+
     def __init__(self, host, port, protocol):
         self._host = host
         self._port = port
@@ -754,6 +819,11 @@ class BurpLogHttpService(IHttpService):
         return self._protocol
 
 class BurpLogHttpRequestResponse(IHttpRequestResponse):
+    '''
+    Burp expects the object passed to "addScanIssue" to include a member 
+    that implements this interface; that is what this object is used for.
+    '''
+
     def __init__(self, entry):
         self.entry = entry
 
@@ -768,12 +838,14 @@ class BurpLogHttpRequestResponse(IHttpRequestResponse):
 
 class BurpLogScanIssue(IScanIssue):
     '''
-    Passed to addScanItem
+    Passed to addScanItem.
+
     Note that a pythonic solution that dynamically creates method based on 
     LogEntry attributes via functools.partial will not work here as the 
     interface classes supplied by Burp (IScanIssue, etc.) include read-only
     attributes corresponding to strings that would be used by such a solution.
     '''
+
     def __init__(self, entry):
         self.entry = entry
         self.messages = [BurpLogHttpRequestResponse(m) for m in self.entry.messages]
@@ -800,5 +872,3 @@ class BurpLogScanIssue(IScanIssue):
         return self.entry.severity
     def getUrl(self):
         return URL(self.entry.url)
-
-
