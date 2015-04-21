@@ -8,7 +8,7 @@ items via git. Users can right-click supported items in Burp to send them to
 a git repo and use the Git Bridge tab to send items back to their respective 
 Burp tools.
 
-For more information see https://github.com/jfoote/burp-chorus.
+For more information see https://github.com/jfoote/burp-git-bridge.
 
 This code is a PoC, and quite frankly kind of a mess. Right now only Repeater 
 and Scanner are supported. If you're interested in a more polished version let 
@@ -37,7 +37,7 @@ import sys
 
 
 '''
-Entry point for Burp Chorus extension.
+Entry point for Burp Git Bridge extension.
 '''
 
 class BurpExtender(IBurpExtender):
@@ -242,6 +242,9 @@ class GuiLog(AbstractTableModel):
         self._lock.release()
 
     def add_entry(self, entry):
+        '''
+        Adds entry to the table
+        '''
 
         self._lock.acquire()
         row = self._log.size()
@@ -251,6 +254,10 @@ class GuiLog(AbstractTableModel):
         self._lock.release()
 
     def remove_entry(self, entry):
+        '''
+        Removes entry from the table
+        '''
+
         self._lock.acquire()
         for i in range(0, len(self._log)):
             ei = self._log[i] # TODO: OK?
@@ -262,15 +269,27 @@ class GuiLog(AbstractTableModel):
         # TODO: check/fix this once i access to network/docs
 
     def getRowCount(self):
+        '''
+        Used by the Java Swing UI 
+        '''
+
         try:
             return self._log.size()
         except:
             return 0
     
     def getColumnCount(self):
+        '''
+        Used by the Java Swing UI 
+        '''
+
         return 5
     
     def getColumnName(self, columnIndex):
+        '''
+        Used by the Java Swing UI 
+        '''
+
         cols = ["Time added", 
                 "Tool",
                 "URL",
@@ -282,9 +301,16 @@ class GuiLog(AbstractTableModel):
             return ""
 
     def get(self, rowIndex):
+        '''
+        Gets the LogEntry at rowIndex
+        '''
         return self._log.get(rowIndex)
     
     def getValueAt(self, rowIndex, columnIndex):
+        '''
+        Used by the Java Swing UI 
+        '''
+
         logEntry = self._log.get(rowIndex)
         if columnIndex == 0:
             return logEntry.timestamp
@@ -304,19 +330,31 @@ class GuiLog(AbstractTableModel):
 
 import os, subprocess
 class GitLog(object):
+    '''
+    Represents the underlying Git Repo that stores user information. Used 
+    by the Log object. As it stands, uses only a single git repo at a fixed 
+    path.
+    '''
+
     def __init__(self, callbacks):
+        '''
+        Creates the git repo if it doesn't exist
+        '''
 
         self.callbacks = callbacks
 
         # Set directory paths and if necessary, init git repo
 
         home = os.path.expanduser("~")
-        self.repo_path = os.path.join(home, ".burp-chorus")
+        self.repo_path = os.path.join(home, ".burp-git-bridge")
 
         if not os.path.exists(self.repo_path):
             subprocess.check_call(["git", "init", self.repo_path], cwd=home)
 
     def add_repeater_entry(self, entry):
+        '''
+        Adds a LogEntry containing Burp Repeater data to the git repo
+        '''
 
         # Make directory for this entry
 
@@ -331,6 +369,9 @@ class GitLog(object):
                 cwd=self.repo_path)
 
     def add_scanner_entry(self, entry):
+        '''
+        Adds a LogEntry containing Burp Scanner data to the git repo
+        '''
 
         # Create dir hierarchy for this issue
 
@@ -345,7 +386,7 @@ class GitLog(object):
         messages_dir = os.path.join(entry_dir, "messages")
         if not os.path.exists(messages_dir):
             os.mkdir(messages_dir)
-            lpath = os.path.join(messages_dir, ".chorus-list")
+            lpath = os.path.join(messages_dir, ".burp-list")
             open(lpath, "wt")
             subprocess.check_call(["git", "add", lpath], cwd=self.repo_path)
         i = 0
@@ -362,8 +403,9 @@ class GitLog(object):
 
     def write_entry(self, entry, entry_dir):
         '''
-        Stores entry to entry_dir and adds it to git repo
+        Stores a LogEntry to entry_dir and adds it to git repo.
         '''
+
         if not os.path.exists(entry_dir):
             os.mkdir(entry_dir)
         for filename, data in entry.__dict__.iteritems():
@@ -382,11 +424,17 @@ class GitLog(object):
 
     def entries(self):
         '''
-        Generator; yields each entry in repo
+        Generator; yields a LogEntry for each entry in the on-disk git repo
         '''
+
         def load_entry(entry_path):
+            '''
+            Loads a single entry from the path. Could be a "list" entry (see
+            below)
+            '''
+
             filenames = os.listdir(entry_path)
-            if ".chorus-list" in filenames:
+            if ".burp-list" in filenames:
                 return load_list(entry_path)
             entry = LogEntry()
             for filename in filenames:
@@ -399,13 +447,21 @@ class GitLog(object):
             return entry
 
         def load_list(entry_path):
+            '''
+            Loads a "list" entry (corresponds to a python list, or a Java 
+            ArrayList, such as the "messages" member of a Burp Scanner Issue).
+            '''
+
             entries = []
             for filename in os.listdir(entry_path):
                 file_path = os.path.join(entry_path, filename)
-                if filename == ".chorus-list":
+                if filename == ".burp-list":
                     continue
                 entries.append(load_entry(file_path))
             return entries
+
+
+        # Process each of the directories in the underlying git repo 
 
         for entry_dir in os.listdir(self.repo_path):
             if entry_dir == ".git":
@@ -418,10 +474,18 @@ class GitLog(object):
 
 
     def whoami(self):
+        '''
+        Returns user.name from the underlying git repo. Used to note who 
+        created or modified an entry.
+        '''
+
         return subprocess.check_output(["git", "config", "user.name"], 
                 cwd=self.repo_path)
 
     def remove(self, entry):
+        '''
+        Removes the given LogEntry from the underlying git repo.
+        '''
         entry_path = os.path.join(self.repo_path, entry.md5)
         subprocess.check_output(["git", "rm", "-rf", entry_path], 
            cwd=self.repo_path)
