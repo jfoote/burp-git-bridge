@@ -1,49 +1,24 @@
 '''
 #
-# Chorus plugin for Burp Suite Pro
+# Git Bridge extension for Burp Suite Pro
 #
 
-The Chorus plugin lets Burp users store and share findings and other Burp 
+The Git Bridge plugin lets Burp users store and share findings and other Burp 
 items via git. Users can right-click supported items in Burp to send them to
-Chorus (and an underlying git repo), and use the Chorus tab to send items
-back to their respective Burp tools.
+a git repo and use the Git Bridge tab to send items back to their respective 
+Burp tools.
 
-This code is a PoC. Right now only Repeater and Scanner are supported.
-Stay tuned for a more polished version, or better yet consider sending 
-me a pull request. Thanks for checking it out.
+For more information see https://github.com/jfoote/burp-chorus.
 
+This code is a PoC, and quite frankly kind of a mess. Right now only Repeater 
+and Scanner are supported. If you're interested in a more polished version let 
+me know, or better yet consider sending me a pull request. 
+
+Thanks for checking it out.
 
 Jonathan Foote 
 jmfoote@loyola.edu
-https://github.com/jfoote/burp-chorus
 2015-04-19
-
-
-## Design
-
-The entire plugin is implemented in this single file. Ugly but convenient. The
-file is broken into sections. Each section contains multiple classes. The 
-sections are as follows:
-
-### Entry Point: 
-
-Implements BurpExtender, the entry point for the plugin.
-
-### Logging
-
-Objects that coordinate changes to the Git repo and in-Burp UI. Logging is 
-divided into objects that support git functionality (GitLog) and objects that 
-support in-Burp functionality (GuiLog). These two parts are wrapped into a 
-single class (Log) that is used by the UI components.
-
-### UI
-
-Swing UI Components. Bad. No fun.
-
-### Burp Interop
-
-Objects that are used to store user data as it is passed to 
-Burp callbacks (addScanIssue, etc.)
 '''
 
 from burp import IBurpExtender, ITab, IHttpListener, IMessageEditorController, IContextMenuFactory, IScanIssue, IHttpService, IHttpRequestResponse
@@ -75,7 +50,7 @@ class BurpExtender(IBurpExtender, IHttpListener):
     
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
-        callbacks.setExtensionName("Burp Chorus")
+        callbacks.setExtensionName("Git Bridge")
         
         self.log = Log(callbacks)
         self.ui = BurpUi(callbacks, self.log)
@@ -449,7 +424,7 @@ class BurpUi(ITab):
 
       
     def getTabCaption(self):
-        return "Chorus"
+        return "Git"
        
     def getUiComponent(self):
         return self._splitpane
@@ -464,14 +439,14 @@ class RightClickHandler(IContextMenuFactory):
         tool = invocation.getToolFlag()
         if tool == self.callbacks.TOOL_REPEATER:
             if context in [invocation.CONTEXT_MESSAGE_EDITOR_REQUEST, invocation.CONTEXT_MESSAGE_VIEWER_RESPONSE]:
-                item = JMenuItem("Send to Chorus")
+                item = JMenuItem("Send to Git Bridge")
                 item.addActionListener(self.RepeaterHandler(self.callbacks, invocation, self.log))
                 items = ArrayList()
                 items.add(item)
                 return items
         elif tool == self.callbacks.TOOL_SCANNER:
             if context in [invocation.CONTEXT_SCANNER_RESULTS]:
-                item = JMenuItem("Send to Chorus")
+                item = JMenuItem("Send to Git Bridge")
                 item.addActionListener(self.ScannerHandler(self.callbacks, invocation, self.log))
                 items = ArrayList()
                 items.add(item)
@@ -507,7 +482,7 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
     '''
     def __init__(self, callbacks, log):
         self.commandPanel = CommandPanel(callbacks, log)
-        self.addTab("Chorus Commands", self.commandPanel)
+        self.addTab("Git Bridge Commands", self.commandPanel)
         self._requestViewer = callbacks.createMessageEditor(self, False)
         self._responseViewer = callbacks.createMessageEditor(self, False)
         self._issueViewer = callbacks.createMessageEditor(self, False)
@@ -535,7 +510,7 @@ class UiBottomPane(JTabbedPane, IMessageEditorController):
             self.addTab("Issue Summary", self._issueViewer.getComponent())
             self._issueViewer.setMessage(self.getScanIssueSummary(log_entry), 
                     False)
-        self.addTab("Chorus Commands", self.commandPanel)
+        self.addTab("Git Bridge Commands", self.commandPanel)
         self._currentlyDisplayedItem = log_entry
 
     def getScanIssueSummary(self, log_entry):
@@ -607,19 +582,19 @@ class CommandPanel(JPanel, ActionListener):
 
         self.setLayout(BoxLayout(self, BoxLayout.PAGE_AXIS))
 
-        label = JLabel("Reload UI from Git Repo:")
+        label = JLabel("Reload from Git Repo:")
         button = JButton("Reload")
         button.addActionListener(CommandPanel.ReloadAction(log))
         self.add(label)
         self.add(button)
 
-        label = JLabel("Send selected entries to respective burp tools:")
+        label = JLabel("Send selected entries to respective Burp tools:")
         button = JButton("Send")
         button.addActionListener(CommandPanel.SendAction(self))
         self.add(label)
         self.add(button)
 
-        label = JLabel("Remove selected entries from repo:")
+        label = JLabel("Remove selected entries from Git Repo:")
         button = JButton("Remove")
         button.addActionListener(CommandPanel.RemoveAction(self, log))
         self.add(label)
