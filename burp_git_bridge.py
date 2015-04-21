@@ -21,13 +21,15 @@ jmfoote@loyola.edu
 2015-04-19
 '''
 
-from burp import IBurpExtender, ITab, IHttpListener, IMessageEditorController, IContextMenuFactory, IScanIssue, IHttpService, IHttpRequestResponse
+from burp import IBurpExtender, ITab, IHttpListener, IMessageEditorController, 
+    IContextMenuFactory, IScanIssue, IHttpService, IHttpRequestResponse
 from java.awt import Component
 from java.awt.event import ActionListener
 from java.io import PrintWriter
 from java.util import ArrayList, List
 from java.net import URL
-from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, SwingUtilities, JPanel, JButton, JLabel, JMenuItem, BoxLayout
+from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, 
+    SwingUtilities, JPanel, JButton, JLabel, JMenuItem, BoxLayout
 from javax.swing.table import AbstractTableModel
 from threading import Lock
 import datetime, os, hashlib
@@ -38,31 +40,27 @@ import sys
 Entry point for Burp Chorus extension.
 '''
 
-class BurpExtender(IBurpExtender, IHttpListener):
+class BurpExtender(IBurpExtender):
     '''
-    Entry point for plugin; creates UI, and Log
-    Will create GitRepo and (probably) a standalone InputHandler later
+    Entry point for plugin; creates UI and Log
     '''
     
     def	registerExtenderCallbacks(self, callbacks):
+        
+        # Assign stdout/stderr for debugging and set extension name
+
         sys.stdout = callbacks.getStdout()
         sys.stderr = callbacks.getStderr()
-    
-        self._callbacks = callbacks
-        self._helpers = callbacks.getHelpers()
         callbacks.setExtensionName("Git Bridge")
         
+
+        # Create major objects and load user data 
+
         self.log = Log(callbacks)
         self.ui = BurpUi(callbacks, self.log)
         self.log.setUi(self.ui)
         self.log.reload()
        
-        callbacks.registerHttpListener(self)
-
-    def processHttpMessage(self, toolFlag, messageIsRequest, messageInfo):
-        pass
-        #if not messageIsRequest:
-        #    self.log.add_network_entry(toolFlag, messageInfo)
        
 
 '''
@@ -71,8 +69,18 @@ as the underlying git repo
 '''
 
 class LogEntry(object):
+    '''
+    Hacky dictionary used to store Burp tool data. Objects of this class 
+    are stored in the Java-style table represented in the Burp UI table.
+    They are created by the BurpUi when a user sends Burp tool data to Git 
+    Bridge, or by Git Bridge when a user's git repo is reloaded into Burp.
+    '''
     def __init__(self, *args, **kwargs):
         self.__dict__ = kwargs
+
+
+        # Hash most of the tool data to uniquely identify this entry.
+        # Note: Could be more pythonic.
 
         md5 = hashlib.md5()
         for k, v in self.__dict__.iteritems():
@@ -87,12 +95,17 @@ class LogEntry(object):
 
 class Log():
     '''
-    Log of burp activity: commands handles both the Burp UI log and the git 
-    repo log.
-    Used by BurpExtender when it logs input events.
+    Log of burp activity: this class encapsulates both the Burp UI log and the git 
+    repo log. A single object of this class is created when the extension is 
+    loaded. It is used by BurpExtender when it logs input events or the 
+    in-Burp Git Bridge log is reloaded from the underlying git repo.
     '''
 
     def __init__(self, callbacks):
+        '''
+        Creates GUI log and git log objects
+        '''
+
         self.ui = None
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
@@ -100,17 +113,30 @@ class Log():
         self.git_log = GitLog(callbacks)
 
     def setUi(self, ui):
+        '''
+        There is a circular dependency between the Log and Burp GUI objects: 
+        the GUI needs a handle to the Log to add new Burp tool data, and the 
+        Log needs a handle to the GUI to update in the in-GUI table.
+
+        The GUI takes the Log in its constructor, and this function gives the 
+        Log a handle to the GUI.
+        '''
+
         self.ui = ui
         self.gui_log.ui = ui
 
     def reload(self):
+        '''
+        Reloads the Log from on the on-disk git repo.
+        '''
         self.gui_log.clear() 
         for entry in self.git_log.entries():
             self.gui_log.add_entry(entry)
 
     def add_repeater_entry(self, messageInfo):
         '''
-        Grab salient info from Burp and store it to GUI and Git logs
+        Loads salient info from the Burp-supplied messageInfo object and 
+        stores it to the GUI and Git logs
         '''
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -128,9 +154,14 @@ class Log():
         self.git_log.add_repeater_entry(entry)
 
     def add_scanner_entry(self, scanIssue):
+        '''
+        Loads salient info from the Burp-supplied scanInfo object and 
+        stores it to the GUI and Git logs
+        '''
+
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Gather info from messages. Oi, should probably re-design this.
+        # Gather info from messages. Oi, ugly.
 
         messages = []
         for message in scanIssue.getHttpMessages():
@@ -171,6 +202,10 @@ class Log():
         self.git_log.add_scanner_entry(entry)
 
     def remove(self, entry):
+        '''
+        Removes the supplied entry from the Log
+        '''
+
         self.git_log.remove(entry)
         #self.gui_log.remove_entry(entry) 
         self.reload() # TODO: replace this with the above call once it is finished
@@ -178,12 +213,15 @@ class Log():
 
 class GuiLog(AbstractTableModel):
     '''
-    Log of burp activity: commands handles both the Burp UI log and the git 
-    repo log.
-    Acts as a AbstractTableModel for that table that is show in the UI tab. 
+    Acts as an AbstractTableModel for the table that is shown in the UI tab: 
+    when this data structure changes, the in-UI table is updated.
     '''
 
     def __init__(self, callbacks):
+        '''
+        Creates a Java-style ArrayList to hold LogEntries that appear in the table
+        '''
+
         self.ui = None
         self._log = ArrayList()
         self._lock = Lock()
@@ -191,6 +229,10 @@ class GuiLog(AbstractTableModel):
         self._helpers = callbacks.getHelpers()
 
     def clear(self):
+        '''
+        Clears all entries from the table
+        '''
+
         self._lock.acquire()
         last = self._log.size()
         if last > 0:
