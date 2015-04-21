@@ -1,7 +1,5 @@
 '''
-#
-# Git Bridge extension for Burp Suite Pro
-#
+Git Bridge extension for Burp Suite Pro
 
 The Git Bridge plugin lets Burp users store and share findings and other Burp 
 items via git. Users can right-click supported items in Burp to send them to
@@ -21,15 +19,13 @@ jmfoote@loyola.edu
 2015-04-19
 '''
 
-from burp import IBurpExtender, ITab, IHttpListener, IMessageEditorController, 
-    IContextMenuFactory, IScanIssue, IHttpService, IHttpRequestResponse
+from burp import IBurpExtender, ITab, IHttpListener, IMessageEditorController, IContextMenuFactory, IScanIssue, IHttpService, IHttpRequestResponse
 from java.awt import Component
 from java.awt.event import ActionListener
 from java.io import PrintWriter
 from java.util import ArrayList, List
 from java.net import URL
-from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, 
-    SwingUtilities, JPanel, JButton, JLabel, JMenuItem, BoxLayout
+from javax.swing import JScrollPane, JSplitPane, JTabbedPane, JTable, SwingUtilities, JPanel, JButton, JLabel, JMenuItem, BoxLayout
 from javax.swing.table import AbstractTableModel
 from threading import Lock
 import datetime, os, hashlib
@@ -207,8 +203,7 @@ class Log():
         '''
 
         self.git_log.remove(entry)
-        #self.gui_log.remove_entry(entry) 
-        self.reload() # TODO: replace this with the above call once it is finished
+        self.gui_log.remove_entry(entry) 
 
 
 class GuiLog(AbstractTableModel):
@@ -260,13 +255,12 @@ class GuiLog(AbstractTableModel):
 
         self._lock.acquire()
         for i in range(0, len(self._log)):
-            ei = self._log[i] # TODO: OK?
+            ei = self._log[i] 
             if ei.md5 == entry.md5:
-                self._log.remove(i) # TODO: correct?
+                self._log.remove(i)
                 break
-        self.fireTableRowsDeleted(i, i) # TODO: correct?
+        self.fireTableRowsDeleted(i, i) 
         self._lock.release()
-        # TODO: check/fix this once i access to network/docs
 
     def getRowCount(self):
         '''
