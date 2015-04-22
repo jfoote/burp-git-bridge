@@ -2,61 +2,56 @@
 
 The Git Bridge plugin lets Burp users store and share findings and other Burp items via git. Users can right-click supported items in Burp to send them to a git repo and use the Git Bridge tab to send items back to their respective Burp tools.
 
+The git repo is located at `~/.burp_git_bridge`.
+
 ## How to Use
 
 ### Load the extension
 
-Download `burp_git_bridge.py` and load the plugin via the "Extender" tab as usual. 
+Download `burp_git_bridge.py` and load the plugin via the "Extender" tab as usual. Note: This plugin is written in Python so you'll need follow the steps to setup Jython in Burp if you haven't already.
 
 ![](http://foote.pub/images/burp-git/burp-git-install.png)
 
-This plugin is written in Python so you'll need follow the steps to setup Jython in Burp if you haven't already.
-
 ### Store
 
-1. Right click on an interesting Scanner or Repeater item and choose `Send to Git Bridge`
+Right click on an interesting Scanner or Repeater item and choose `Send to Git Bridge`
 
 ![](http://foote.pub/images/burp-git/burp-git-send-to-git.png)
 
-2. View the item in the Git Repo
-
-![](http://foote.pub/images/burp-git/burp-git-view-repo.png)
 
 ### Share
 
-1. `cd ~/.burp_git_bridge` in your favorite shell and set your git upstream to a shared (and maybe private) git server
+Open a shell, change directories to the Burp git bridge repo and git it.
 
 ```
-$ git remote set-url origin ssh://git@github.com/jfoote/burp-git-bridge-test.git
+$ cd ~/.burp_git_bridge
+$ git remote add origin ssh://git@github.com/jfoote/burp-git-bridge-test.git
+$ git push -u origin master
+$ git branch my_findings
 ```
 
-2. Issue a git push
+![](http://foote.pub/images/burp-git/burp-git-github.png)
+
+PSA: Only interact with git servers you trust, especially when dealing with sensitive data. 
+
+### Load Shared Burp data
+
+Open a shell, change directories to the Burp git bridge repo and issue a pull.
 
 ```
-$ git push
-```
-
-3. Optionally, view items via a git web interface
-
-TODO
-
-### Load and Burp
-
-1. `cd ~/.burp_git_bridge` in your favorite shell and isue a git pull
-
-```
+$ cd ~/.burp_git_bridge
 $ git pull
 ```
 
-2. Back in Burp, flip to the "Git Bridge" tab and click "Reload"
+Back in Burp, flip to the "Git Bridge" tab and click "Reload"
 
 ![](http://foote.pub/images/burp-git/burp-git-reload.png)
 
-3. Send items to their respective tools 
+Then send items to their respective tools 
 
 ![](http://foote.pub/images/burp-git/burp-git-send-to-tools.png)
 
-4. Keep Burping
+Burp away
 
 ![](http://foote.pub/images/burp-git/burp-git-repeater.png)
 
