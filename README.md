@@ -19,7 +19,7 @@ Right click on an interesting Scanner or Repeater item and choose `Send to Git B
 ![](http://foote.pub/images/burp-git/burp-git-send-to-git.png)
 
 
-### Share or Backup Burp data
+### Share or Create a Remote Backup of Burp data
 
 Open a shell, change directories to the Burp git bridge repo and git it.
 
