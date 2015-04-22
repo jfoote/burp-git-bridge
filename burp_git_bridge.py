@@ -8,15 +8,15 @@ Burp tools.
 
 For more information see https://github.com/jfoote/burp-git-bridge.
 
-This code is a PoC, and quite frankly kind of a mess. Right now only Repeater 
-and Scanner are supported. If you're interested in a more polished version let 
-me know, or better yet consider sending me a pull request. 
+This extension is a PoC. Right now only Repeater and Scanner are supported, 
+and the code could use refactoring. If you're interested in a more polished 
+version or more features let me know, or better yet consider sending me a pull request. 
 
 Thanks for checking it out.
 
 Jonathan Foote 
 jmfoote@loyola.edu
-2015-04-19
+2015-04-21
 '''
 
 from burp import IBurpExtender, ITab, IHttpListener, IMessageEditorController, IContextMenuFactory, IScanIssue, IHttpService, IHttpRequestResponse
