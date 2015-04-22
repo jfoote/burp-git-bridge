@@ -697,8 +697,7 @@ class UiLogTable(JTable):
         callbacks.customizeUiComponent(self)
 
     def getSelectedEntries(self):
-        for i in self.getSelectedRows():
-            yield self.gui_log.get(i)
+        return [self.gui_log.get(i) for i in self.getSelectedRows()]
     
     def changeSelection(self, row, col, toggle, extend):
         '''
@@ -790,7 +789,8 @@ class CommandPanel(JPanel, ActionListener):
             Iterates over each entry that is selected in the UI table and 
             removes it from the Log. 
             '''
-            for entry in self.panel.log_table.getSelectedEntries():
+            entries = self.panel.log_table.getSelectedEntries()
+            for entry in entries:
                 self.log.remove(entry)
 
 
