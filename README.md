@@ -8,7 +8,7 @@ The Git Bridge plugin lets Burp users store and share findings and other Burp it
 
 Download `burp_git_bridge.py` and load the plugin via the "Extender" tab as usual. 
 
-![](burp-git-install.png)
+![](http://foote.pub/images/burp-git/burp-git-install.png)
 
 This plugin is written in Python so you'll need follow the steps to setup Jython in Burp if you haven't already.
 
@@ -16,11 +16,11 @@ This plugin is written in Python so you'll need follow the steps to setup Jython
 
 1. Right click on an interesting Scanner or Repeater item and choose `Send to Git Bridge`
 
-![](burp-git-send-to-git.png)
+![](http://foote.pub/images/burp-git/burp-git-send-to-git.png)
 
 2. View the item in the Git Repo
 
-![](burp-git-view-repo.png)
+![](http://foote.pub/images/burp-git/burp-git-view-repo.png)
 
 ### Share
 
@@ -50,15 +50,15 @@ $ git pull
 
 2. Back in Burp, flip to the "Git Bridge" tab and click "Reload"
 
-![](burp-git-reload.png)
+![](http://foote.pub/images/burp-git/burp-git-reload.png)
 
 3. Send items to their respective tools 
 
-![](burp-git-send-to-tools.png)
+![](http://foote.pub/images/burp-git/burp-git-send-to-tools.png)
 
 4. Keep Burping
 
-![](burp-git-repeater.png)
+![](http://foote.pub/images/burp-git/burp-git-repeater.png)
 
 ## Installation
 
