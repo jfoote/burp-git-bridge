@@ -12,14 +12,14 @@ Git Bridge creates a git repo at `~/.burp_git_bridge`.
 
 ![](http://foote.pub/images/burp-git/burp-git-install.png)
 
-### Store
+### Store Revisions Locally
 
 Right click on an interesting Scanner or Repeater item and choose `Send to Git Bridge`
 
 ![](http://foote.pub/images/burp-git/burp-git-send-to-git.png)
 
 
-### Share
+### Share or Backup Burp data
 
 Open a shell, change directories to the Burp git bridge repo and git it.
 
