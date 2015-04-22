@@ -55,7 +55,7 @@ Burp away
 
 ![](http://foote.pub/images/burp-git/burp-git-repeater.png)
 
-## Installation
+## Notes
 
 This extension is a PoC. Right now only Repeater and Scanner are supported, 
 and the code could use refactoring. If you're interested in a more polished 
@@ -63,4 +63,6 @@ version or more features let me know, or better yet consider sending me a pull r
 
 Thanks for checking it out.
 
-
+Jonathan Foote
+jmfoote@loyola.edu
+2015-04-21
