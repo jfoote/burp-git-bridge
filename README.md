@@ -63,6 +63,8 @@ version or more features let me know, or better yet consider sending me a pull r
 
 Thanks for checking it out.
 
+```
 Jonathan Foote
 jmfoote@loyola.edu
 2015-04-21
+```
