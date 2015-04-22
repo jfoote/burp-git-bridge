@@ -427,15 +427,16 @@ class GitLog(object):
             below)
             '''
 
-            filenames = os.listdir(entry_path)
-            if ".burp-list" in filenames:
-                return load_list(entry_path)
             entry = LogEntry()
-            for filename in filenames:
+            for filename in os.listdir(entry_path):
                 file_path = os.path.join(entry_path, filename)
                 if os.path.isdir(file_path):
-                    sub_entry = load_entry(file_path)
-                    entry.__dict__[filename] = sub_entry
+                    if ".burp-list" in os.listdir(file_path):
+                        list_entry = load_list(file_path)
+                        entry.__dict__[filename] = list_entry
+                    else:
+                        sub_entry = load_entry(file_path)
+                        entry.__dict__[filename] = sub_entry
                 else:
                     entry.__dict__[filename] = open(file_path, "rb").read()
             return entry
