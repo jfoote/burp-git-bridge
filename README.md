@@ -2,13 +2,13 @@
 
 The Git Bridge plugin lets Burp users store and share findings and other Burp items via git. Users can right-click supported items in Burp to send them to a git repo and use the Git Bridge tab to send items back to their respective Burp tools.
 
-The git repo is located at `~/.burp_git_bridge`.
-
 ## How to Use
 
 ### Load the extension
 
 Download `burp_git_bridge.py` and load the plugin via the "Extender" tab as usual. Note: This plugin is written in Python so you'll need follow the steps to setup Jython in Burp if you haven't already.
+
+Git Bridge creates a git repo at `~/.burp_git_bridge`.
 
 ![](http://foote.pub/images/burp-git/burp-git-install.png)
 
