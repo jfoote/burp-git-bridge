@@ -1,6 +1,6 @@
 # Git Bridge extension for Burp Suite Pro
 
-The Git Bridge plugin lets Burp users store and share findings and other Burp items via git. Users can right-click supported items in Burp to send them to a git repo and use the Git Bridge tab to send items back to their respective Burp tools.
+The Git Bridge plugin lets Burp users store Burp data and collaborate via git. Users can right-click supported items in Burp to send them to a git repo and use the Git Bridge tab to send items back to their respective Burp tools.
 
 ## How to Use
 
@@ -19,7 +19,7 @@ Right click on an interesting Scanner or Repeater item and choose `Send to Git B
 ![](http://foote.pub/images/burp-git/burp-git-send-to-git.png)
 
 
-### Share or Create a Remote Backup of Burp data
+### Share (or Create a Remote Backup of) Burp data
 
 Open a shell, change directories to the Burp git bridge repo and git it.
 
